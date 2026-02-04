@@ -1,5 +1,5 @@
 import createContextHook from '@nkzw/create-context-hook';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
 import {
   Shipment,
@@ -163,13 +163,13 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
     },
   });
 
-  // Data
-  const shipments = shipmentsQuery.data ?? [];
-  const quotes = quotesQuery.data ?? [];
-  const routes = routesQuery.data ?? [];
-  const conversations = conversationsQuery.data ?? [];
-  const payments = paymentsQuery.data ?? [];
-  const kycRequests = kycRequestsQuery.data ?? [];
+  // Data - memoized to prevent unnecessary re-renders
+  const shipments = useMemo(() => shipmentsQuery.data ?? [], [shipmentsQuery.data]);
+  const quotes = useMemo(() => quotesQuery.data ?? [], [quotesQuery.data]);
+  const routes = useMemo(() => routesQuery.data ?? [], [routesQuery.data]);
+  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
+  const payments = useMemo(() => paymentsQuery.data ?? [], [paymentsQuery.data]);
+  const kycRequests = useMemo(() => kycRequestsQuery.data ?? [], [kycRequestsQuery.data]);
   const isLoading = shipmentsQuery.isLoading || quotesQuery.isLoading;
 
   // Shipment functions
