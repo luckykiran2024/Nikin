@@ -46,10 +46,10 @@ export const supabase = getSupabaseClient() || createClient('https://placeholder
   },
 });
 
-export const isSupabaseConfigured = checkSupabaseConfigured;
+export const isSupabaseConfigured = (): boolean => checkSupabaseConfigured();
 
 export const initSupabaseAuth = async () => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     console.log('[Supabase Auth] Skipping - Supabase not configured');
     return null;
   }
@@ -73,7 +73,7 @@ export const initSupabaseAuth = async () => {
 };
 
 export const signUpWithEmail = async (email: string, password: string) => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
   
@@ -90,7 +90,7 @@ export const signUpWithEmail = async (email: string, password: string) => {
 };
 
 export const signInWithEmail = async (email: string, password: string) => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
   
@@ -107,7 +107,7 @@ export const signInWithEmail = async (email: string, password: string) => {
 };
 
 export const signInWithPhone = async (phone: string) => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
   
@@ -123,7 +123,7 @@ export const signInWithPhone = async (phone: string) => {
 };
 
 export const verifyPhoneOTP = async (phone: string, token: string) => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
   
@@ -141,7 +141,7 @@ export const verifyPhoneOTP = async (phone: string, token: string) => {
 };
 
 export const signOut = async () => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     return;
   }
   
@@ -153,7 +153,7 @@ export const signOut = async () => {
 };
 
 export const getCurrentUser = async () => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     return null;
   }
   
@@ -170,7 +170,7 @@ export const getCurrentUser = async () => {
 };
 
 export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
-  if (!isSupabaseConfigured()) {
+  if (!checkSupabaseConfigured()) {
     return { data: { subscription: { unsubscribe: () => {} } } };
   }
   
