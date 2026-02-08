@@ -182,6 +182,85 @@ export const onAuthStateChange = (callback: (event: string, session: any) => voi
   return client.auth.onAuthStateChange(callback);
 };
 
+export const testSupabaseConnection = async (): Promise<{ connected: boolean; message: string; details?: Record<string, unknown> }> => {
+  console.log('[Supabase] Testing connection...');
+  
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+  
+  console.log('[Supabase] URL configured:', url ? url.substring(0, 30) + '...' : 'NOT SET');
+  console.log('[Supabase] Key configured:', key ? 'SET (length: ' + key.length + ')' : 'NOT SET');
+  
+  if (!checkSupabaseConfigured()) {
+    return {
+      connected: false,
+      message: 'Supabase not configured - missing or invalid URL/key',
+      details: {
+        urlSet: Boolean(url),
+        keySet: Boolean(key),
+        urlValid: url && url !== 'https://your-project-id.supabase.co',
+        keyValid: key && key !== 'your-anon-key-here' && key.length > 20,
+      }
+    };
+  }
+  
+  try {
+    const client = getSupabaseClient();
+    if (!client) {
+      return {
+        connected: false,
+        message: 'Failed to create Supabase client',
+      };
+    }
+    
+    // Test connection by checking if we can reach the database
+    const startTime = Date.now();
+    const { error } = await client.from('users').select('id').limit(1);
+    const responseTime = Date.now() - startTime;
+    
+    if (error) {
+      // Check if it's a "relation does not exist" error (tables not created yet)
+      if (error.message.includes('does not exist') || error.code === '42P01') {
+        return {
+          connected: true,
+          message: 'Connected to Supabase, but tables not created yet. Run the migrations.',
+          details: {
+            responseTime: `${responseTime}ms`,
+            tablesExist: false,
+            errorCode: error.code,
+          }
+        };
+      }
+      
+      return {
+        connected: false,
+        message: `Database error: ${error.message}`,
+        details: {
+          errorCode: error.code,
+          errorHint: error.hint,
+        }
+      };
+    }
+    
+    console.log('[Supabase] Connection successful!');
+    return {
+      connected: true,
+      message: 'Successfully connected to Supabase!',
+      details: {
+        responseTime: `${responseTime}ms`,
+        tablesExist: true,
+      }
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[Supabase] Connection test failed:', errorMessage);
+    return {
+      connected: false,
+      message: `Connection failed: ${errorMessage}`,
+    };
+  }
+};
+
 export type Database = {
   public: {
     Tables: {
