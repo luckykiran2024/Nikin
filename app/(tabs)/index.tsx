@@ -32,6 +32,7 @@ import * as Location from 'expo-location';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
+import useResponsive from '@/hooks/useResponsive';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentCity, setCurrentCity] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const { isDesktop, contentMaxWidth, padding } = useResponsive();
 
   useEffect(() => {
     if (user?.activeRole === 'traveler') {
@@ -183,7 +185,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <LinearGradient
         colors={[Colors.primary, Colors.primaryDark]}
-        style={styles.header}
+        style={[styles.header, isDesktop && styles.headerDesktop]}
       >
         <View style={styles.headerContent}>
           <View>
@@ -222,7 +224,10 @@ export default function HomeScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: padding }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -233,7 +238,7 @@ export default function HomeScreen() {
         }
       >
         {/* Stats Cards */}
-        <View style={styles.statsContainer}>
+        <View style={[styles.statsContainer, isDesktop && styles.statsContainerDesktop]}>
           {isTraveler ? (
             <>
               <View style={styles.statCard}>
@@ -496,7 +501,7 @@ export default function HomeScreen() {
             </View>
 
             {availableShipments.length === 0 ? (
-              <View style={styles.emptyState}>
+              <View style={[styles.emptyState, isDesktop && styles.emptyStateDesktop]}>
                 <Package size={48} color={Colors.textTertiary} />
                 <Text style={styles.emptyText}>
                   {currentCity ? `No shipments near ${currentCity}` : 'No shipments available'}
@@ -504,10 +509,11 @@ export default function HomeScreen() {
                 <Text style={styles.emptySubtext}>Pull to refresh or check all shipments</Text>
               </View>
             ) : (
-              availableShipments.slice(0, 5).map((shipment) => (
+              <View style={isDesktop ? styles.shipmentGridDesktop : undefined}>
+              {availableShipments.slice(0, isDesktop ? 6 : 5).map((shipment) => (
                 <TouchableOpacity
                   key={shipment.id}
-                  style={styles.shipmentCard}
+                  style={[styles.shipmentCard, isDesktop && styles.shipmentCardDesktop]}
                   onPress={() => router.push(`/shipment/${shipment.id}`)}
                 >
                   <View style={styles.shipmentHeader}>
@@ -544,7 +550,8 @@ export default function HomeScreen() {
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
-              ))
+              ))}
+              </View>
             )}
           </View>
         )}
@@ -604,6 +611,10 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     paddingHorizontal: 20,
   },
+  headerDesktop: {
+    paddingTop: 40,
+    paddingBottom: 24,
+  },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -659,6 +670,10 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: -40,
     marginBottom: 20,
+  },
+  statsContainerDesktop: {
+    gap: 16,
+    justifyContent: 'center',
   },
   statCard: {
     flex: 1,
@@ -755,6 +770,18 @@ const styles = StyleSheet.create({
     padding: 32,
     backgroundColor: Colors.surface,
     borderRadius: 16,
+  },
+  emptyStateDesktop: {
+    padding: 48,
+  },
+  shipmentGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  shipmentCardDesktop: {
+    width: '48%',
+    marginBottom: 0,
   },
   emptyText: {
     fontSize: 14,

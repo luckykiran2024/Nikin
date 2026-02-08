@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
 import { ShipmentStatus } from '@/types';
 import { searchLocations, IndianLocation } from '@/constants/indianLocations';
+import useResponsive from '@/hooks/useResponsive';
 
 const statusFilters: { label: string; value: ShipmentStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
@@ -32,6 +33,7 @@ export default function ShipmentsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { shipments, isLoading, refreshData } = useDataStore();
+  const { isDesktop, contentMaxWidth, padding } = useResponsive();
 
   useFocusEffect(
     useCallback(() => {
@@ -217,7 +219,10 @@ export default function ShipmentsScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%', paddingHorizontal: padding }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -790,8 +795,8 @@ export default function ShipmentsScreen() {
         transparent
         onRequestClose={() => setShowFilterModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={[styles.modalOverlay, isDesktop && styles.modalOverlayDesktop]}>
+          <View style={[styles.modalContent, isDesktop && styles.modalContentDesktop]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Filter by Destination</Text>
               <TouchableOpacity onPress={() => setShowFilterModal(false)}>
@@ -1082,12 +1087,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
+  modalOverlayDesktop: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modalContent: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '80%',
     minHeight: '50%',
+  },
+  modalContentDesktop: {
+    borderRadius: 24,
+    maxWidth: 500,
+    width: '90%',
+    maxHeight: '70%',
+    minHeight: 400,
   },
   modalHeader: {
     flexDirection: 'row',

@@ -25,6 +25,7 @@ import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
 import { useRouter } from 'expo-router';
+import useResponsive from '@/hooks/useResponsive';
 
 const stats = [
   { 
@@ -74,6 +75,7 @@ export default function AdminDashboardScreen() {
   const { tickets, shipments } = useDataStore();
   const router = useRouter();
   const [refreshing, setRefreshing] = React.useState(false);
+  const { isDesktop, contentMaxWidth } = useResponsive();
 
   const openTickets = tickets.filter(t => t.status === 'open' || t.status === 'in_progress');
   const activeShipmentsCount = shipments.filter(s => s.status !== 'completed' && s.status !== 'delivered').length;
@@ -115,12 +117,15 @@ export default function AdminDashboardScreen() {
 
       <ScrollView
         style={styles.content}
+        contentContainerStyle={[
+          { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <View style={styles.statsGrid}>
+        <View style={[styles.statsGrid, isDesktop && styles.statsGridDesktop]}>
           {stats.map((stat, index) => {
             const Icon = stat.icon;
             return (
@@ -168,7 +173,7 @@ export default function AdminDashboardScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.quickActions}>
+          <View style={[styles.quickActions, isDesktop && styles.quickActionsDesktop]}>
             <TouchableOpacity 
               style={styles.quickActionButton}
               onPress={() => router.push('/(admin)/kyc-requests' as any)}
@@ -306,6 +311,10 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 20,
   },
+  statsGridDesktop: {
+    gap: 16,
+    justifyContent: 'center',
+  },
   statCard: {
     width: '47%',
     backgroundColor: Colors.surface,
@@ -400,6 +409,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 12,
+  },
+  quickActionsDesktop: {
+    gap: 16,
+    maxWidth: 600,
   },
   quickActionButton: {
     flex: 1,
