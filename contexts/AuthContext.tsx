@@ -13,9 +13,17 @@ import {
 } from '@/lib/supabase';
 
 const AUTH_STORAGE_KEY = 'parcel_auth_user';
-const SUPABASE_AUTH_ENABLED = isSupabaseConfigured();
+
+const getSupabaseAuthEnabled = (): boolean => {
+  try {
+    return isSupabaseConfigured();
+  } catch {
+    return false;
+  }
+};
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
+  const SUPABASE_AUTH_ENABLED = getSupabaseAuthEnabled();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
