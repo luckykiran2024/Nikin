@@ -94,14 +94,14 @@ export default function AdminDashboardScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#8B5CF6', '#7C3AED']}
+        colors={[Colors.secondary, Colors.secondaryDark]}
         style={styles.headerGradient}
       >
         <SafeAreaView edges={['top']}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <View style={styles.adminBadge}>
-                <Shield size={18} color="#8B5CF6" />
+                <Shield size={18} color={Colors.primary} />
               </View>
               <View>
                 <Text style={styles.welcomeText}>Admin Panel</Text>
@@ -371,8 +371,8 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     fontSize: 14,
-    color: '#8B5CF6',
-    fontWeight: '600' as const,
+    color: Colors.primary,
+    fontWeight: '700' as const,
   },
   activityList: {
     backgroundColor: Colors.surface,
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#8B5CF6',
+    backgroundColor: Colors.primary,
     marginRight: 12,
   },
   activityContent: {

@@ -12,8 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Package, Lock, ArrowRight, ArrowLeft, Send, Plane, Shield, Mail } from 'lucide-react-native';
+import { Lock, ArrowRight, ArrowLeft, Send, Plane, Shield, Mail } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
@@ -22,35 +21,35 @@ const roleConfig: Record<string, {
   title: string;
   subtitle: string;
   icon: typeof Send;
-  colors: readonly [string, string];
+  accent: string;
   testCredentials: string;
 }> = {
   sender: {
-    title: 'Sender / Receiver',
+    title: 'Sender',
     subtitle: 'Send or receive parcels',
     icon: Send,
-    colors: ['#F59E0B', '#D97706'] as const,
+    accent: Colors.primary,
     testCredentials: 'sender@test.com / sender123',
   },
   receiver: {
-    title: 'Sender / Receiver',
+    title: 'Sender',
     subtitle: 'Send or receive parcels',
     icon: Send,
-    colors: ['#F59E0B', '#D97706'] as const,
+    accent: Colors.primary,
     testCredentials: 'sender@test.com / sender123',
   },
   traveler: {
     title: 'Traveler',
     subtitle: 'Deliver parcels & earn',
     icon: Plane,
-    colors: ['#10B981', '#059669'] as const,
+    accent: Colors.accent,
     testCredentials: 'traveler@test.com / traveler123',
   },
   admin: {
     title: 'Admin',
     subtitle: 'Platform management',
     icon: Shield,
-    colors: ['#8B5CF6', '#7C3AED'] as const,
+    accent: Colors.secondary,
     testCredentials: 'admin@parcelpeer.com / admin123',
   },
 };
@@ -63,10 +62,10 @@ export default function LoginScreen() {
   const RoleIcon = config.icon;
 
   const { login } = useAuth();
-  const [emailOrPhone, setEmailOrPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [emailOrPhone, setEmailOrPhone] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
 
   const handleLogin = async () => {
     if (!emailOrPhone.trim() || !password.trim()) {
@@ -77,7 +76,6 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const user = await login(emailOrPhone, password, role);
-      
       if (role === 'admin') {
         router.replace('/(admin)' as any);
       } else if (role === 'traveler' && user.kycStatus !== 'approved') {
@@ -86,317 +84,246 @@ export default function LoginScreen() {
         router.replace('/(tabs)');
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      setError(err?.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <LinearGradient
-      colors={[Colors.primary, Colors.primaryDark]}
-      style={styles.gradient}
-    >
-      <SafeAreaView style={styles.container}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+          <TouchableOpacity
+            testID="back-button"
+            style={styles.backBtn}
+            onPress={() => router.back()}
           >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
-              <ArrowLeft size={24} color={Colors.textInverse} />
-            </TouchableOpacity>
+            <ArrowLeft size={20} color={Colors.text} />
+          </TouchableOpacity>
 
-            <View style={styles.header}>
-              <View style={styles.logoContainer}>
-                <Package size={40} color={Colors.textInverse} strokeWidth={1.5} />
-              </View>
-              <Text style={styles.title}>ParcelPeer</Text>
+          <View style={[styles.roleChip, { backgroundColor: config.accent }]}>
+            <RoleIcon size={14} color={Colors.textInverse} />
+            <Text style={styles.roleChipText}>{config.title.toUpperCase()}</Text>
+          </View>
+
+          <Text style={styles.title}>Welcome{`
+`}back.</Text>
+          <Text style={styles.subtitle}>{config.subtitle}</Text>
+
+          {error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
+          ) : null}
 
-            <LinearGradient
-              colors={config.colors}
-              style={styles.roleBadge}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <RoleIcon size={20} color={Colors.textInverse} />
-              <Text style={styles.roleBadgeText}>{config.title}</Text>
-            </LinearGradient>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email or phone</Text>
+            <View style={styles.inputWrap}>
+              <Mail size={18} color={Colors.textTertiary} />
+              <TextInput
+                testID="email-input"
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor={Colors.textTertiary}
+                value={emailOrPhone}
+                onChangeText={setEmailOrPhone}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
 
-            <View style={styles.formContainer}>
-              <Text style={styles.formTitle}>Welcome Back</Text>
-              <Text style={styles.formSubtitle}>{config.subtitle}</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.inputWrap}>
+              <Lock size={18} color={Colors.textTertiary} />
+              <TextInput
+                testID="password-input"
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor={Colors.textTertiary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
+          </View>
 
-              {error ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.forgot}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            testID="login-btn"
+            style={[styles.cta, { backgroundColor: Colors.secondary }, isLoading && styles.ctaDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading}
+            activeOpacity={0.9}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={Colors.textInverse} />
+            ) : (
+              <>
+                <Text style={styles.ctaText}>Sign in</Text>
+                <View style={[styles.ctaArrow, { backgroundColor: config.accent }]}>
+                  <ArrowRight size={16} color={Colors.textInverse} />
                 </View>
-              ) : null}
+              </>
+            )}
+          </TouchableOpacity>
 
-              <View style={styles.inputContainer}>
-                <Mail size={20} color={Colors.textSecondary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email or Phone"
-                  placeholderTextColor={Colors.textTertiary}
-                  value={emailOrPhone}
-                  onChangeText={setEmailOrPhone}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
+          {role !== 'admin' && (
+            <TouchableOpacity
+              style={styles.signupRow}
+              onPress={() => router.push({ pathname: '/(auth)/signup', params: { role } })}
+            >
+              <Text style={styles.signupText}>
+                New here? <Text style={styles.signupLink}>Create an account</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
 
-              <View style={styles.inputContainer}>
-                <Lock size={20} color={Colors.textSecondary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={Colors.textTertiary}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-              </View>
-
-              <TouchableOpacity style={styles.forgotPassword}>
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-                onPress={handleLogin}
-                disabled={isLoading}
-              >
-                <LinearGradient
-                  colors={config.colors}
-                  style={styles.loginButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator color={Colors.textInverse} />
-                  ) : (
-                    <>
-                      <Text style={styles.loginButtonText}>Sign In</Text>
-                      <ArrowRight size={20} color={Colors.textInverse} />
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {role !== 'admin' && (
-                <>
-                  <View style={styles.divider}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>or</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.signupButton}
-                    onPress={() => router.push({ pathname: '/(auth)/signup', params: { role } })}
-                  >
-                    <Text style={styles.signupButtonText}>
-                      Don&apos;t have an account? <Text style={styles.signupLink}>Sign Up</Text>
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-
-              <View style={styles.testCredentials}>
-                <Text style={styles.testCredentialsLabel}>Test credentials:</Text>
-                <Text style={styles.testCredentialsValue}>{config.testCredentials}</Text>
-              </View>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </LinearGradient>
+          <View style={styles.testBox}>
+            <Text style={styles.testLabel}>DEMO CREDENTIALS</Text>
+            <Text style={styles.testValue}>{config.testCredentials}</Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  safe: { flex: 1, backgroundColor: Colors.background },
+  flex: { flex: 1 },
   scrollContent: {
-    flexGrow: 1,
     padding: 24,
+    paddingBottom: 48,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+  },
+  roleChip: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
     marginBottom: 16,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  logoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
+  roleChipText: {
+    color: Colors.textInverse,
+    fontSize: 11,
+    fontWeight: '800' as const,
+    letterSpacing: 1.2,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-    color: Colors.textInverse,
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 24,
-    gap: 8,
-    marginBottom: 24,
-  },
-  roleBadgeText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.textInverse,
-  },
-  formContainer: {
-    backgroundColor: Colors.surface,
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: Colors.text,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  formTitle: {
-    fontSize: 24,
-    fontWeight: '700' as const,
+    fontSize: 40,
+    lineHeight: 44,
+    fontWeight: '800' as const,
     color: Colors.text,
-    marginBottom: 4,
+    letterSpacing: -1.2,
   },
-  formSubtitle: {
-    fontSize: 14,
+  subtitle: {
+    marginTop: 8,
+    marginBottom: 28,
+    fontSize: 15,
     color: Colors.textSecondary,
-    marginBottom: 24,
   },
-  errorContainer: {
+  errorBox: {
     backgroundColor: Colors.errorLight,
     padding: 12,
     borderRadius: 12,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.error + '40',
   },
-  errorText: {
-    color: Colors.error,
-    fontSize: 14,
-    textAlign: 'center',
+  errorText: { color: Colors.error, fontSize: 13, fontWeight: '600' as const },
+  inputGroup: { marginBottom: 14 },
+  label: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+    letterSpacing: 0.5,
   },
-  inputContainer: {
+  inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: Colors.border,
+    gap: 10,
   },
   input: {
     flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    fontSize: 16,
+    paddingVertical: 14,
+    fontSize: 15,
     color: Colors.text,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: 24,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '600' as const,
-  },
-  loginButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  loginButtonDisabled: {
-    opacity: 0.7,
-  },
-  loginButtonGradient: {
+  forgot: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 20 },
+  forgotText: { color: Colors.primary, fontSize: 13, fontWeight: '600' as const },
+  cta: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 22,
+    paddingRight: 8,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  ctaDisabled: { opacity: 0.7 },
+  ctaText: {
+    color: Colors.textInverse,
+    fontSize: 16,
+    fontWeight: '700' as const,
+    paddingVertical: 12,
+  },
+  ctaArrow: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
   },
-  loginButtonText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.textInverse,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    paddingHorizontal: 16,
-    color: Colors.textTertiary,
-    fontSize: 14,
-  },
-  signupButton: {
-    alignItems: 'center',
-  },
-  signupButtonText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  signupLink: {
-    color: Colors.primary,
-    fontWeight: '600' as const,
-  },
-  testCredentials: {
-    marginTop: 20,
-    padding: 12,
+  signupRow: { marginTop: 20, alignItems: 'center' },
+  signupText: { fontSize: 14, color: Colors.textSecondary },
+  signupLink: { color: Colors.primary, fontWeight: '700' as const },
+  testBox: {
+    marginTop: 32,
+    padding: 14,
+    borderRadius: 14,
     backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 8,
-    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
   },
-  testCredentialsLabel: {
-    fontSize: 12,
+  testLabel: {
+    fontSize: 10,
+    fontWeight: '800' as const,
     color: Colors.textTertiary,
+    letterSpacing: 1.5,
     marginBottom: 4,
   },
-  testCredentialsValue: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '500' as const,
-  },
+  testValue: { fontSize: 13, color: Colors.text, fontWeight: '600' as const },
 });

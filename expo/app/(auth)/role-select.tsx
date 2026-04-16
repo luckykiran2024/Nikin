@@ -4,223 +4,257 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Package, Send, Plane, Shield } from 'lucide-react-native';
+import { Send, Plane, Shield, ArrowRight, Package2 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
+
+type Role = 'sender' | 'traveler' | 'admin';
+
+interface RoleCardProps {
+  role: Role;
+  title: string;
+  subtitle: string;
+  tag?: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  accent: string;
+  ink?: boolean;
+  testId: string;
+}
+
+function RoleCard({ title, subtitle, tag, icon, onPress, accent, ink, testId }: RoleCardProps) {
+  return (
+    <TouchableOpacity
+      testID={testId}
+      style={[styles.card, ink && styles.cardInk]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.cardIcon, { backgroundColor: accent }]}>{icon}</View>
+      <View style={styles.cardBody}>
+        <View style={styles.cardTitleRow}>
+          <Text style={[styles.cardTitle, ink && styles.cardTitleInk]}>{title}</Text>
+          {tag ? (
+            <View style={[styles.tag, { backgroundColor: accent }]}>
+              <Text style={styles.tagText}>{tag}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={[styles.cardSubtitle, ink && styles.cardSubtitleInk]}>{subtitle}</Text>
+      </View>
+      <View style={[styles.cardArrow, ink && styles.cardArrowInk]}>
+        <ArrowRight size={18} color={ink ? Colors.textInverse : Colors.text} />
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
 
-  const handleRoleSelect = (role: 'sender' | 'traveler' | 'admin') => {
-    router.push({
-      pathname: '/(auth)/login',
-      params: { role },
-    });
+  const handleRoleSelect = (role: Role) => {
+    router.push({ pathname: '/(auth)/login', params: { role } });
   };
 
   return (
-    <LinearGradient
-      colors={[Colors.primary, Colors.primaryDark]}
-      style={styles.gradient}
-    >
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Package size={56} color={Colors.textInverse} strokeWidth={1.5} />
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroRow}>
+          <View style={styles.logoMark}>
+            <Package2 size={22} color={Colors.textInverse} strokeWidth={2.5} />
           </View>
-          <Text style={styles.title}>ParcelPeer</Text>
+          <Text style={styles.brand}>ParcelPeer</Text>
+        </View>
+
+        <View style={styles.headerBlock}>
+          <Text style={styles.kicker}>WELCOME</Text>
+          <Text style={styles.title}>
+            Move parcels{`
+`}the human way.
+          </Text>
           <Text style={styles.subtitle}>
-            Send parcels with trusted travelers
+            A peer-to-peer courier network. Choose how you&apos;d like to start.
           </Text>
         </View>
 
-        <View style={styles.content}>
-          <Text style={styles.selectTitle}>How would you like to use ParcelPeer?</Text>
-
-          <TouchableOpacity
-            style={styles.roleCard}
+        <View style={styles.cards}>
+          <RoleCard
+            testId="role-sender"
+            role="sender"
+            title="I&apos;m sending"
+            subtitle="Ship a parcel with a verified traveler heading your way."
+            accent={Colors.primary}
+            icon={<Send size={22} color={Colors.textInverse} />}
             onPress={() => handleRoleSelect('sender')}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={['#F59E0B', '#D97706']}
-              style={styles.roleCardGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.roleIconContainer}>
-                <Send size={32} color={Colors.textInverse} />
-              </View>
-              <View style={styles.roleTextContainer}>
-                <Text style={styles.roleTitle}>Sender / Receiver</Text>
-                <Text style={styles.roleDescription}>
-                  Send or receive parcels through trusted travelers
-                </Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.roleCard}
+          />
+          <RoleCard
+            testId="role-traveler"
+            role="traveler"
+            title="I&apos;m travelling"
+            subtitle="Earn from trips you&apos;re already making. KYC required."
+            tag="EARN"
+            accent={Colors.accent}
+            icon={<Plane size={22} color={Colors.textInverse} />}
             onPress={() => handleRoleSelect('traveler')}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={['#10B981', '#059669']}
-              style={styles.roleCardGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.roleIconContainer}>
-                <Plane size={32} color={Colors.textInverse} />
-              </View>
-              <View style={styles.roleTextContainer}>
-                <Text style={styles.roleTitle}>Traveler</Text>
-                <Text style={styles.roleDescription}>
-                  Earn money by delivering parcels on your trips
-                </Text>
-              </View>
-              <View style={styles.kycBadge}>
-                <Text style={styles.kycBadgeText}>KYC Required</Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.roleCard}
+          />
+          <RoleCard
+            testId="role-admin"
+            role="admin"
+            title="Operations / Admin"
+            subtitle="Manage users, KYC, payouts and disputes."
+            accent={Colors.primary}
+            ink
+            icon={<Shield size={22} color={Colors.textInverse} />}
             onPress={() => handleRoleSelect('admin')}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={['#8B5CF6', '#7C3AED']}
-              style={styles.roleCardGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.roleIconContainer}>
-                <Shield size={32} color={Colors.textInverse} />
-              </View>
-              <View style={styles.roleTextContainer}>
-                <Text style={styles.roleTitle}>Admin</Text>
-                <Text style={styles.roleDescription}>
-                  Manage platform operations and users
-                </Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
+          />
         </View>
 
-        <Text style={styles.footerText}>
-          Choose your role to continue. You can always switch later.
+        <Text style={styles.footer}>
+          By continuing you agree to our Terms & Privacy Policy.
         </Text>
-      </SafeAreaView>
-    </LinearGradient>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
+  safe: { flex: 1, backgroundColor: Colors.background },
   container: {
-    flex: 1,
     paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 32,
   },
-  header: {
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 32,
-  },
-  logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: '700' as const,
-    color: Colors.textInverse,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.85)',
-    textAlign: 'center',
-  },
-  content: {
-    flex: 1,
-  },
-  selectTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-    color: Colors.textInverse,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  roleCard: {
-    marginBottom: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  roleCardGradient: {
+  heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-    minHeight: 100,
+    gap: 10,
+    marginBottom: 40,
   },
-  roleIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
+  logoMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.secondary,
     alignItems: 'center',
-    marginRight: 16,
+    justifyContent: 'center',
   },
-  roleTextContainer: {
-    flex: 1,
+  brand: {
+    fontSize: 18,
+    fontWeight: '800' as const,
+    color: Colors.text,
+    letterSpacing: -0.3,
   },
-  roleTitle: {
-    fontSize: 20,
+  headerBlock: {
+    marginBottom: 36,
+  },
+  kicker: {
+    fontSize: 12,
     fontWeight: '700' as const,
-    color: Colors.textInverse,
+    color: Colors.primary,
+    letterSpacing: 2,
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 40,
+    lineHeight: 44,
+    fontWeight: '800' as const,
+    color: Colors.text,
+    letterSpacing: -1.2,
+  },
+  subtitle: {
+    marginTop: 12,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.textSecondary,
+  },
+  cards: {
+    gap: 14,
+  },
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.08,
+        shadowRadius: 14,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
+  cardInk: {
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  cardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  cardBody: { flex: 1 },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 4,
   },
-  roleDescription: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
-    lineHeight: 20,
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700' as const,
+    color: Colors.text,
+    letterSpacing: -0.3,
   },
-  kycBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  kycBadgeText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    color: Colors.textInverse,
-  },
-  footerText: {
+  cardTitleInk: { color: Colors.textInverse },
+  cardSubtitle: {
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
+    lineHeight: 18,
+    color: Colors.textSecondary,
+  },
+  cardSubtitleInk: { color: 'rgba(255,255,255,0.7)' },
+  cardArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  cardArrowInk: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  tagText: {
+    fontSize: 10,
+    fontWeight: '800' as const,
+    color: Colors.textInverse,
+    letterSpacing: 1,
+  },
+  footer: {
+    marginTop: 28,
     textAlign: 'center',
-    marginBottom: 24,
+    fontSize: 12,
+    color: Colors.textTertiary,
   },
 });
