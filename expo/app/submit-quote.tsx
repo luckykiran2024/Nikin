@@ -224,8 +224,8 @@ export default function SubmitQuoteScreen() {
           <Text style={styles.infoTitle}>How Quotes Work</Text>
           <Text style={styles.infoItem}>• Sender can see and compare all quotes</Text>
           <Text style={styles.infoItem}>• Once accepted, you will be notified</Text>
-          <Text style={styles.infoItem}>• Payment is collected directly from the receiver on delivery (offline)</Text>
-          <Text style={styles.infoItem}>• No platform fees – keep 100% of your quote</Text>
+          <Text style={styles.infoItem}>• Sender pays online via Razorpay (UPI, card, netbanking, wallet, pay-later)</Text>
+          <Text style={styles.infoItem}>• You receive your payout after successful delivery</Text>
         </View>
 
         <TouchableOpacity 

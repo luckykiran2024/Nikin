@@ -114,15 +114,23 @@ export default function ShipmentDetailScreen() {
 
     Alert.alert(
       'Accept Quote',
-      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nPayment is collected directly by the traveler on delivery (offline).`,
+      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nYou'll be taken to secure Razorpay checkout to pay online (UPI, cards, netbanking, wallets & pay-later supported).`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Accept',
+          text: 'Accept & Pay',
           onPress: async () => {
             try {
               await acceptQuote(quoteId, createConversation);
-              Alert.alert('Quote Accepted', 'The traveler has been assigned. You can chat with them to coordinate pickup.');
+              router.push({
+                pathname: '/payment',
+                params: {
+                  shipmentId: shipment.id,
+                  quoteId: quote.id,
+                  amount: quote.amount.toString(),
+                  travelerName: quote.travelerName,
+                },
+              });
             } catch (e) {
               console.log('Accept quote error', e);
               Alert.alert('Error', 'Failed to accept quote. Please try again.');
