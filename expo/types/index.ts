@@ -3,7 +3,7 @@ export type KYCStatus = 'pending' | 'approved' | 'rejected' | 'not_submitted';
 export type ShipmentStatus = 'created' | 'quoted' | 'assigned' | 'payment_pending' | 'confirmed' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'completed';
 export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
 export type PaymentStatus = 'initiated' | 'held' | 'released' | 'failed' | 'cod_pending';
-export type PaymentMethod = 'upi' | 'credit_card' | 'debit_card' | 'cod';
+export type PaymentMethod = 'upi' | 'card' | 'netbanking' | 'wallet' | 'paylater' | 'emi' | 'cod';
 export type Gender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
 export type VehicleType = 'car' | 'bike' | 'train' | 'flight' | 'bus';
 export type TravelMode = 'car' | 'train' | 'bus' | 'lorry' | 'bike' | 'flight' | 'others';
@@ -159,6 +159,9 @@ export interface Payment {
   createdAt: string;
   completedAt?: string;
   releasedAt?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
 }
 
 export interface Review {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import {
@@ -13,13 +14,18 @@ import {
   Smartphone,
   Banknote,
   CheckCircle,
-  Shield,
   Info,
+  Landmark,
+  Wallet,
+  Clock,
+  ShieldCheck,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { PaymentMethod } from '@/types';
 import { useDataStore } from '@/contexts/DataStoreContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { trpc } from '@/lib/trpc';
+import RazorpayCheckout from '@/components/RazorpayCheckout';
 
 const PLATFORM_COMMISSION = 0.20;
 
@@ -29,37 +35,17 @@ interface PaymentOption {
   description: string;
   icon: typeof CreditCard;
   color: string;
+  tag?: string;
 }
 
 const paymentOptions: PaymentOption[] = [
-  {
-    id: 'upi',
-    name: 'UPI',
-    description: 'Pay using Google Pay, PhonePe, Paytm, etc.',
-    icon: Smartphone,
-    color: '#5F259F',
-  },
-  {
-    id: 'credit_card',
-    name: 'Credit Card',
-    description: 'Visa, Mastercard, RuPay',
-    icon: CreditCard,
-    color: '#1A73E8',
-  },
-  {
-    id: 'debit_card',
-    name: 'Debit Card',
-    description: 'All major bank cards accepted',
-    icon: CreditCard,
-    color: '#34A853',
-  },
-  {
-    id: 'cod',
-    name: 'Cash on Delivery',
-    description: 'Pay when you receive the parcel',
-    icon: Banknote,
-    color: '#EA4335',
-  },
+  { id: 'upi', name: 'UPI', description: 'GPay, PhonePe, Paytm, BHIM & more', icon: Smartphone, color: '#5F259F', tag: 'Instant' },
+  { id: 'card', name: 'Credit / Debit Card', description: 'Visa, Mastercard, RuPay, Amex', icon: CreditCard, color: '#1A73E8' },
+  { id: 'netbanking', name: 'Net Banking', description: 'All major Indian banks', icon: Landmark, color: '#0E9E6E' },
+  { id: 'wallet', name: 'Wallets', description: 'Paytm, Mobikwik, Freecharge, Amazon Pay', icon: Wallet, color: '#F59E0B' },
+  { id: 'paylater', name: 'Pay Later', description: 'LazyPay, Simpl, ICICI PayLater', icon: Clock, color: '#8B5CF6', tag: 'No interest' },
+  { id: 'emi', name: 'EMI', description: 'Card & Cardless EMI options', icon: CreditCard, color: '#EF4444' },
+  { id: 'cod', name: 'Cash on Delivery', description: 'Pay the traveler on delivery', icon: Banknote, color: '#EA4335' },
 ];
 
 export default function PaymentScreen() {
@@ -67,121 +53,147 @@ export default function PaymentScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { createPayment, updateShipment, getShipmentById, getPaymentByShipmentId } = useDataStore();
+
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [checkout, setCheckout] = useState<{
+    visible: boolean;
+    keyId: string;
+    orderId: string;
+    amountPaise: number;
+    paymentId: string;
+  } | null>(null);
 
   const shipment = shipmentId ? getShipmentById(shipmentId) : null;
   const existingPayment = shipmentId ? getPaymentByShipmentId(shipmentId) : null;
-  const isAlreadyPaid = shipment?.paymentCompleted === true || existingPayment !== undefined;
+  const isAlreadyPaid = shipment?.paymentCompleted === true || existingPayment?.status === 'completed';
 
   const quoteAmount = parseFloat(amount || '0');
   const platformFee = Math.round(quoteAmount * PLATFORM_COMMISSION);
   const totalAmount = quoteAmount;
   const travelerAmount = quoteAmount - platformFee;
 
+  const createOrderMutation = trpc.payments.createOrder.useMutation();
+  const verifyPaymentMutation = trpc.payments.verifyPayment.useMutation();
+
+  const prefill = useMemo(() => ({
+    name: user?.name || '',
+    email: user?.email || '',
+    contact: user?.phone || '',
+  }), [user]);
+
   const handlePayment = async () => {
     if (!selectedMethod) {
       Alert.alert('Select Payment Method', 'Please select a payment method to proceed.');
       return;
     }
-
     if (!shipmentId || !user) {
       Alert.alert('Error', 'Invalid payment request.');
       return;
     }
-
     if (isAlreadyPaid) {
-      Alert.alert(
-        'Payment Already Completed',
-        `Payment for this shipment (${shipment?.parcelRequestId}) has already been processed. You cannot make another payment for the same parcel.`,
-        [{ text: 'View Shipment', onPress: () => router.replace(`/shipment/${shipmentId}`) }]
-      );
+      Alert.alert('Already Paid', `Payment for ${shipment?.parcelRequestId} is already complete.`, [
+        { text: 'View Shipment', onPress: () => router.replace(`/shipment/${shipmentId}`) },
+      ]);
       return;
     }
 
     setIsProcessing(true);
-
     try {
       if (selectedMethod === 'cod') {
-        // Create payment record for COD
         await createPayment({
           shipmentId,
           senderId: user.id,
           travelerId: shipment?.assignedTravelerId || '',
           amount: totalAmount,
-          platformFee: platformFee,
-          travelerAmount: travelerAmount,
-          method: selectedMethod,
+          platformFee,
+          travelerAmount,
+          method: 'cod',
           status: 'pending',
           escrowHeld: false,
         });
-
-        // Set status to confirmed for COD - traveler is now officially assigned
         await updateShipment(shipmentId, {
           status: 'confirmed',
-          paymentMethod: selectedMethod,
+          paymentMethod: 'cod',
           paymentStatus: 'cod_pending',
           paymentCompleted: true,
         });
-        console.log('COD order confirmed, shipment assigned to traveler:', shipment?.assignedTravelerName);
-
-        Alert.alert(
-          'Cash on Delivery',
-          'Your order has been confirmed and assigned to the traveler. Please pay ₹' + totalAmount + ' upon delivery.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                setIsProcessing(false);
-                router.replace('/(tabs)/shipments');
-              },
-            },
-          ]
-        );
+        setIsProcessing(false);
+        Alert.alert('Order Confirmed', `Please pay ₹${totalAmount} in cash upon delivery.`, [
+          { text: 'OK', onPress: () => router.replace('/(tabs)/shipments') },
+        ]);
         return;
       }
 
-      // Simulate payment processing for other methods
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Create payment record
-      await createPayment({
+      const result = await createOrderMutation.mutateAsync({
         shipmentId,
         senderId: user.id,
         travelerId: shipment?.assignedTravelerId || '',
         amount: totalAmount,
-        platformFee: platformFee,
-        travelerAmount: travelerAmount,
+        platformFee,
+        travelerAmount,
         method: selectedMethod,
-        status: 'completed',
-        escrowHeld: true,
       });
 
-      // Set status to confirmed - payment completed, traveler is now officially assigned
-      await updateShipment(shipmentId, {
-        status: 'confirmed',
-        paymentMethod: selectedMethod,
-        paymentStatus: 'held',
-        paymentCompleted: true,
-      });
-      console.log('Payment completed, shipment confirmed and assigned to traveler:', shipment?.assignedTravelerName);
+      if (!result.success || !('order' in result) || !result.order || !result.payment) {
+        setIsProcessing(false);
+        Alert.alert('Payment Error', result.error || 'Could not start payment. Try again.');
+        return;
+      }
 
+      setCheckout({
+        visible: true,
+        keyId: result.keyId,
+        orderId: result.order.id,
+        amountPaise: result.order.amount,
+        paymentId: result.payment.id,
+      });
+    } catch (error: any) {
+      console.log('Payment error:', error);
       setIsProcessing(false);
+      Alert.alert('Payment Failed', error?.message || 'Something went wrong. Please try again.');
+    }
+  };
+
+  const handleCheckoutSuccess = async (data: {
+    razorpayPaymentId: string;
+    razorpayOrderId: string;
+    razorpaySignature: string;
+  }) => {
+    if (!checkout) return;
+    try {
+      const verification = await verifyPaymentMutation.mutateAsync({
+        paymentId: checkout.paymentId,
+        razorpayOrderId: data.razorpayOrderId,
+        razorpayPaymentId: data.razorpayPaymentId,
+        razorpaySignature: data.razorpaySignature,
+      });
+
+      setCheckout(null);
+      setIsProcessing(false);
+
+      if (!verification.success) {
+        Alert.alert('Payment Verification Failed', verification.error || 'Please contact support.');
+        return;
+      }
+
       Alert.alert(
         'Payment Successful',
-        `Your payment of ₹${totalAmount} has been processed successfully. The shipment is now assigned to ${shipment?.assignedTravelerName || 'the traveler'}. Amount is held in escrow until delivery.`,
-        [
-          {
-            text: 'View Shipment',
-            onPress: () => router.replace(`/shipment/${shipmentId}`),
-          },
-        ]
+        `₹${totalAmount} paid successfully. ${shipment?.assignedTravelerName || 'The traveler'} has been notified.`,
+        [{ text: 'View Shipment', onPress: () => router.replace(`/shipment/${shipmentId}`) }],
       );
-    } catch (error) {
+    } catch (error: any) {
+      console.log('verify error', error);
+      setCheckout(null);
       setIsProcessing(false);
-      console.log('Payment error:', error);
-      Alert.alert('Payment Failed', 'Something went wrong. Please try again.');
+      Alert.alert('Payment Error', error?.message || 'Verification failed.');
     }
+  };
+
+  const handleCheckoutDismiss = (reason?: string) => {
+    console.log('Razorpay dismissed:', reason);
+    setCheckout(null);
+    setIsProcessing(false);
   };
 
   return (
@@ -193,7 +205,7 @@ export default function PaymentScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.amountCard}>
-          <Text style={styles.amountLabel}>Total Amount</Text>
+          <Text style={styles.amountLabel}>Total Payable</Text>
           <Text style={styles.amountValue}>₹{totalAmount}</Text>
           <View style={styles.breakdownContainer}>
             <View style={styles.breakdownRow}>
@@ -211,51 +223,53 @@ export default function PaymentScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Select Payment Method</Text>
+        <Text style={styles.sectionTitle}>Choose Payment Method</Text>
 
         {paymentOptions.map((option) => {
           const Icon = option.icon;
           const isSelected = selectedMethod === option.id;
-          
           return (
             <TouchableOpacity
               key={option.id}
-              style={[
-                styles.paymentOption,
-                isSelected && styles.paymentOptionSelected,
-              ]}
+              style={[styles.paymentOption, isSelected && styles.paymentOptionSelected]}
               onPress={() => setSelectedMethod(option.id)}
+              testID={`pay-method-${option.id}`}
+              activeOpacity={0.85}
             >
-              <View style={[styles.optionIcon, { backgroundColor: option.color + '15' }]}>
-                <Icon size={24} color={option.color} />
+              <View style={[styles.optionIcon, { backgroundColor: option.color + '18' }]}>
+                <Icon size={22} color={option.color} />
               </View>
               <View style={styles.optionInfo}>
-                <Text style={styles.optionName}>{option.name}</Text>
+                <View style={styles.optionNameRow}>
+                  <Text style={styles.optionName}>{option.name}</Text>
+                  {option.tag ? (
+                    <View style={styles.tag}>
+                      <Text style={styles.tagText}>{option.tag}</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={styles.optionDescription}>{option.description}</Text>
               </View>
-              {isSelected && (
-                <View style={styles.checkIcon}>
-                  <CheckCircle size={24} color={Colors.success} fill={Colors.success} />
-                </View>
+              {isSelected ? (
+                <CheckCircle size={22} color={Colors.success} fill={Colors.success} />
+              ) : (
+                <View style={styles.radio} />
               )}
             </TouchableOpacity>
           );
         })}
 
         <View style={styles.securityCard}>
-          <View style={styles.securityHeader}>
-            <Shield size={20} color={Colors.success} />
-            <Text style={styles.securityTitle}>Secure Payment</Text>
-          </View>
+          <ShieldCheck size={18} color={Colors.success} />
           <Text style={styles.securityText}>
-            Your payment is protected by escrow. Funds will be released to the traveler only after successful delivery confirmation.
+            Payments are processed securely by Razorpay. Your card and UPI details never touch our servers.
           </Text>
         </View>
 
         <View style={styles.infoCard}>
-          <Info size={18} color={Colors.info} />
+          <Info size={16} color={Colors.info} />
           <Text style={styles.infoText}>
-            20% platform fee helps us maintain service quality, provide insurance coverage, and ensure safe deliveries.
+            The 20% platform fee helps run support, identity checks, and safe deliveries.
           </Text>
         </View>
       </ScrollView>
@@ -277,171 +291,136 @@ export default function PaymentScreen() {
             ]}
             onPress={handlePayment}
             disabled={!selectedMethod || isProcessing}
+            testID="pay-button"
           >
             <Text style={styles.payButtonText}>
-              {isProcessing ? 'Processing...' : `Pay ₹${totalAmount}`}
+              {isProcessing ? 'Processing…' : `Pay ₹${totalAmount}`}
             </Text>
           </TouchableOpacity>
         )}
       </View>
+
+      {checkout && selectedMethod && selectedMethod !== 'cod' ? (
+        <RazorpayCheckout
+          visible={checkout.visible}
+          keyId={checkout.keyId}
+          orderId={checkout.orderId}
+          amount={checkout.amountPaise}
+          name="Parcel Delivery"
+          description={shipment?.parcelRequestId ? `Shipment ${shipment.parcelRequestId}` : 'Shipment payment'}
+          prefill={prefill}
+          method={selectedMethod}
+          onSuccess={handleCheckoutSuccess}
+          onDismiss={handleCheckoutDismiss}
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 120,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 140 },
   amountCard: {
-    backgroundColor: Colors.primary,
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 24,
+    backgroundColor: Colors.secondary,
+    borderRadius: 22,
+    padding: 22,
+    marginBottom: 22,
   },
-  amountLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    textAlign: 'center',
-  },
+  amountLabel: { fontSize: 13, color: 'rgba(255,255,255,0.75)', textAlign: 'center', letterSpacing: 0.4 },
   amountValue: {
-    fontSize: 42,
-    fontWeight: '700' as const,
+    fontSize: 44,
+    fontWeight: '800' as const,
     color: Colors.textInverse,
     textAlign: 'center',
-    marginVertical: 8,
+    marginVertical: 6,
   },
   breakdownContainer: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
     padding: 14,
-    marginTop: 16,
+    marginTop: 14,
   },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  breakdownLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  breakdownValue: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.textInverse,
-  },
-  breakdownFee: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: '#FCD34D',
-  },
+  breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  breakdownLabel: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
+  breakdownValue: { fontSize: 13, fontWeight: '600' as const, color: Colors.textInverse },
+  breakdownFee: { fontSize: 13, fontWeight: '600' as const, color: '#FCD34D' },
   travelerRow: {
     marginTop: 8,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
+    borderTopColor: 'rgba(255,255,255,0.15)',
     marginBottom: 0,
   },
-  travelerValue: {
-    fontSize: 14,
-    fontWeight: '700' as const,
-    color: '#86EFAC',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-    color: Colors.text,
-    marginBottom: 16,
-  },
+  travelerValue: { fontSize: 14, fontWeight: '700' as const, color: '#86EFAC' },
+  sectionTitle: { fontSize: 18, fontWeight: '700' as const, color: Colors.text, marginBottom: 14 },
   paymentOption: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
   },
   paymentOptionSelected: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primaryLight + '10',
+    backgroundColor: Colors.primaryLight + '30',
   },
   optionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  optionInfo: {
-    flex: 1,
-    marginLeft: 14,
+  optionInfo: { flex: 1, marginLeft: 12 },
+  optionNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  optionName: { fontSize: 15, fontWeight: '600' as const, color: Colors.text },
+  optionDescription: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  tag: {
+    backgroundColor: Colors.successLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  optionName: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  optionDescription: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  checkIcon: {
-    marginLeft: 10,
+  tagText: { fontSize: 10, color: Colors.success, fontWeight: '700' as const, letterSpacing: 0.3 },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
   },
   securityCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
     backgroundColor: Colors.successLight,
     borderRadius: 14,
-    padding: 16,
-    marginTop: 16,
+    padding: 14,
+    marginTop: 14,
   },
-  securityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  securityTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.success,
-  },
-  securityText: {
-    fontSize: 13,
-    color: Colors.success,
-    lineHeight: 20,
-  },
+  securityText: { flex: 1, fontSize: 12, color: Colors.success, lineHeight: 18 },
   infoCard: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     backgroundColor: Colors.infoLight,
     borderRadius: 14,
-    padding: 16,
-    marginTop: 12,
-    gap: 12,
+    padding: 14,
+    marginTop: 10,
+    gap: 10,
   },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: Colors.info,
-    lineHeight: 20,
-  },
+  infoText: { flex: 1, fontSize: 12, color: Colors.info, lineHeight: 18 },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     padding: 20,
-    paddingBottom: 34,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
@@ -452,17 +431,9 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
   },
-  payButtonDisabled: {
-    backgroundColor: Colors.textTertiary,
-  },
-  payButtonProcessing: {
-    backgroundColor: Colors.primaryLight,
-  },
-  payButtonText: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-    color: Colors.textInverse,
-  },
+  payButtonDisabled: { backgroundColor: Colors.textTertiary },
+  payButtonProcessing: { backgroundColor: Colors.primaryDark },
+  payButtonText: { fontSize: 17, fontWeight: '700' as const, color: Colors.textInverse },
   alreadyPaidContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -472,9 +443,5 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 10,
   },
-  alreadyPaidText: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.success,
-  },
+  alreadyPaidText: { fontSize: 15, fontWeight: '600' as const, color: Colors.success },
 });

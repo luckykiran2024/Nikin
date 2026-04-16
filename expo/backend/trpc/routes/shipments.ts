@@ -33,7 +33,7 @@ export const shipmentsRouter = createTRPCRouter({
       destinationCoords: geoCoordinatesSchema.optional(),
       parcelDetails: parcelDetailsSchema,
       preferredDate: z.string(),
-      paymentMethod: z.enum(['upi', 'credit_card', 'debit_card', 'cod']).optional(),
+      paymentMethod: z.enum(['upi', 'card', 'netbanking', 'wallet', 'paylater', 'emi', 'cod']).optional(),
       specialInstructions: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -105,6 +105,7 @@ export const shipmentsRouter = createTRPCRouter({
       pickupImages: z.array(z.string()).optional(),
       deliveryImages: z.array(z.string()).optional(),
       paymentStatus: z.enum(['initiated', 'held', 'released', 'failed', 'cod_pending']).optional(),
+      paymentMethod: z.enum(['upi', 'card', 'netbanking', 'wallet', 'paylater', 'emi', 'cod']).optional(),
       paymentCompleted: z.boolean().optional(),
       chatId: z.string().optional(),
       currentLocation: geoCoordinatesSchema.optional(),
