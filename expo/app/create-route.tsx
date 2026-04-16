@@ -14,27 +14,57 @@ import { useRouter, Stack } from 'expo-router';
 import { MapPin, Calendar, ChevronDown } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { cities } from '@/mocks/data';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDataStore } from '@/contexts/DataStoreContext';
 
 export default function CreateRouteScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { createRoute } = useDataStore();
   const [fromCity, setFromCity] = useState('');
   const [toCity, setToCity] = useState('');
   const [travelDate, setTravelDate] = useState('');
-  
   const [description, setDescription] = useState('');
   const [showFromCities, setShowFromCities] = useState(false);
   const [showToCities, setShowToCities] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!fromCity || !toCity || !travelDate) {
       Alert.alert('Missing Information', 'Please fill in all required fields');
       return;
     }
-    Alert.alert(
-      'Route Published',
-      'Your travel route has been published. You will receive quotes for matching shipments!',
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    if (fromCity === toCity) {
+      Alert.alert('Invalid Route', 'Departure and destination cities must be different');
+      return;
+    }
+    if (!user) {
+      Alert.alert('Not signed in', 'Please sign in to publish a route');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      console.log('[CreateRoute] Publishing route', { fromCity, toCity, travelDate });
+      await createRoute({
+        travelerId: user.id,
+        travelerName: user.name,
+        fromCity,
+        toCity,
+        travelDate,
+        description: description || undefined,
+      });
+      Alert.alert(
+        'Route Published',
+        'Your travel route has been published. You will receive quotes for matching shipments!',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (err) {
+      console.error('[CreateRoute] Failed to create route', err);
+      const message = err instanceof Error ? err.message : 'Failed to publish route';
+      Alert.alert('Error', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -154,8 +184,13 @@ export default function CreateRouteScreen() {
           <Text style={styles.tipItem}>• Publish routes 3-5 days in advance</Text>
         </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>Publish Route</Text>
+        <TouchableOpacity
+          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+          testID="publish-route-button"
+        >
+          <Text style={styles.submitButtonText}>{isSubmitting ? 'Publishing...' : 'Publish Route'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -284,6 +319,9 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
     marginTop: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: {
     fontSize: 17,
