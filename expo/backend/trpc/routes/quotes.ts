@@ -103,7 +103,7 @@ export const quotesRouter = createTRPCRouter({
       });
 
       db.updateShipment(quote.shipmentId, {
-        status: 'payment_pending',
+        status: 'assigned',
         assignedTravelerId: quote.travelerId,
         assignedTravelerName: quote.travelerName,
         acceptedQuoteAmount: quote.amount,
@@ -113,7 +113,7 @@ export const quotesRouter = createTRPCRouter({
       db.createNotification({
         userId: quote.travelerId,
         title: 'Quote Accepted!',
-        message: `Your quote of ₹${quote.amount} for shipment ${shipment.parcelRequestId} has been accepted! Waiting for payment.`,
+        message: `Your quote of ₹${quote.amount} for shipment ${shipment.parcelRequestId} has been accepted. Coordinate pickup with the sender. Payment is collected offline on delivery.`,
         type: 'quote',
         data: { shipmentId: quote.shipmentId, quoteId: quote.id },
       });

@@ -41,6 +41,7 @@ import {
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
+import { useLiveLocationEmitter } from '@/hooks/useLiveLocationEmitter';
 
 const statusSteps = [
   { key: 'created', label: 'Created', icon: Package },
@@ -87,6 +88,12 @@ export default function ShipmentDetailScreen() {
   const isTraveler = user?.activeRole === 'traveler';
   const isSender = user?.activeRole === 'sender';
 
+  const emitLive =
+    !!isTraveler &&
+    !!shipment &&
+    (shipment.status === 'picked_up' || shipment.status === 'in_transit' || shipment.status === 'out_for_delivery');
+  useLiveLocationEmitter({ shipmentId: shipment?.id ?? '', enabled: emitLive, intervalMs: 20000 });
+
   if (!shipment) {
     return (
       <View style={styles.container}>
@@ -107,14 +114,19 @@ export default function ShipmentDetailScreen() {
 
     Alert.alert(
       'Accept Quote',
-      `Accept quote of ₹${quote.amount} from ${quote.travelerName}? You will be redirected to payment.`,
+      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nPayment is collected directly by the traveler on delivery (offline).`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Accept & Pay',
+          text: 'Accept',
           onPress: async () => {
-            await acceptQuote(quoteId, createConversation);
-            router.push(`/payment?amount=${quote.amount}&shipmentId=${shipment.id}` as any);
+            try {
+              await acceptQuote(quoteId, createConversation);
+              Alert.alert('Quote Accepted', 'The traveler has been assigned. You can chat with them to coordinate pickup.');
+            } catch (e) {
+              console.log('Accept quote error', e);
+              Alert.alert('Error', 'Failed to accept quote. Please try again.');
+            }
           },
         },
       ]

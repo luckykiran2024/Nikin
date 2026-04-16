@@ -52,6 +52,7 @@ export default function CreateShipmentScreen() {
   const [estimatedValue, setEstimatedValue] = useState('');
   const [preferredDate, setPreferredDate] = useState('');
   const [isFragile, setIsFragile] = useState(false);
+  const [declarationAccepted, setDeclarationAccepted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const [showCategories, setShowCategories] = useState(false);
@@ -142,6 +143,10 @@ export default function CreateShipmentScreen() {
     }
     if (!weight || parseFloat(weight) <= 0) {
       Alert.alert('Error', 'Please enter a valid weight');
+      return false;
+    }
+    if (!declarationAccepted) {
+      Alert.alert('Declaration Required', 'You must confirm that the parcel does not contain any illegal or restricted items before proceeding.');
       return false;
     }
     return true;
@@ -391,6 +396,37 @@ export default function CreateShipmentScreen() {
               </View>
               <AlertTriangle size={18} color={Colors.warning} />
               <Text style={styles.fragileText}>This parcel contains fragile items</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Mandatory Declaration Section */}
+          <View style={styles.declarationSection}>
+            <View style={styles.declarationHeader}>
+              <Shield size={20} color={Colors.error} />
+              <Text style={styles.declarationTitle}>Legal Declaration</Text>
+            </View>
+            <Text style={styles.declarationBody}>
+              By proceeding, I solemnly declare that this parcel does NOT contain any of the following:
+            </Text>
+            <View style={styles.declarationList}>
+              <Text style={styles.declarationItem}>• Illegal drugs, narcotics or psychotropic substances</Text>
+              <Text style={styles.declarationItem}>• Weapons, firearms, ammunition or explosives</Text>
+              <Text style={styles.declarationItem}>• Flammable, hazardous or toxic materials</Text>
+              <Text style={styles.declarationItem}>• Counterfeit goods or stolen items</Text>
+              <Text style={styles.declarationItem}>• Live animals, perishables without consent</Text>
+              <Text style={styles.declarationItem}>• Any item restricted under Indian law</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.declarationToggle, declarationAccepted && styles.declarationToggleAccepted]}
+              onPress={() => setDeclarationAccepted(!declarationAccepted)}
+              testID="declaration-checkbox"
+            >
+              <View style={[styles.checkbox, declarationAccepted && styles.checkboxChecked]}>
+                {declarationAccepted && <View style={styles.checkboxInner} />}
+              </View>
+              <Text style={styles.declarationAcceptText}>
+                I confirm the parcel contains no illegal or restricted items and I take full responsibility for its contents. *
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -746,6 +782,60 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: Colors.text,
+  },
+  declarationSection: {
+    backgroundColor: Colors.warningLight,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  declarationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  declarationTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  declarationBody: {
+    fontSize: 13,
+    color: Colors.text,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  declarationList: {
+    marginBottom: 12,
+  },
+  declarationItem: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
+  declarationToggle: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: Colors.surface,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  declarationToggleAccepted: {
+    borderColor: Colors.success,
+    backgroundColor: Colors.successLight,
+  },
+  declarationAcceptText: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.text,
+    fontWeight: '500' as const,
+    lineHeight: 18,
   },
   submitButton: {
     backgroundColor: Colors.primary,
