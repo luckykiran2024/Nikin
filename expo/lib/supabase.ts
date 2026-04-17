@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -138,6 +140,66 @@ export const verifyPhoneOTP = async (phone: string, token: string) => {
   
   if (error) throw error;
   return data;
+};
+
+export const signInWithGoogle = async () => {
+  if (!checkSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client not available');
+
+  if (Platform.OS === 'web') {
+    const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo },
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  const redirectTo = Linking.createURL('/auth/callback');
+  console.log('[Supabase] Google OAuth redirectTo:', redirectTo);
+
+  const { data, error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      skipBrowserRedirect: true,
+    },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error('No OAuth URL returned');
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  if (result.type !== 'success' || !result.url) {
+    throw new Error('Google sign-in was cancelled');
+  }
+
+  const parsed = Linking.parse(result.url);
+  const params = (parsed.queryParams || {}) as Record<string, string | undefined>;
+  let access_token = params.access_token;
+  let refresh_token = params.refresh_token;
+
+  if ((!access_token || !refresh_token) && result.url.includes('#')) {
+    const hash = result.url.split('#')[1] ?? '';
+    const hashParams = new URLSearchParams(hash);
+    access_token = access_token || hashParams.get('access_token') || undefined;
+    refresh_token = refresh_token || hashParams.get('refresh_token') || undefined;
+  }
+
+  if (!access_token || !refresh_token) {
+    throw new Error('Missing tokens from Google sign-in');
+  }
+
+  const { data: sessionData, error: sessionError } = await client.auth.setSession({
+    access_token,
+    refresh_token,
+  });
+  if (sessionError) throw sessionError;
+  return sessionData;
 };
 
 export const signOut = async () => {

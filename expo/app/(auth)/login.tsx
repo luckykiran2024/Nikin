@@ -9,10 +9,21 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Lock, ArrowRight, ArrowLeft, Send, Plane, Shield, Mail } from 'lucide-react-native';
+import {
+  Lock,
+  ArrowRight,
+  ArrowLeft,
+  Send,
+  Plane,
+  Shield,
+  Mail,
+  Eye,
+  EyeOff,
+} from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
@@ -61,10 +72,12 @@ export default function LoginScreen() {
   const config = roleConfig[role] || roleConfig.sender;
   const RoleIcon = config.icon;
 
-  const { login } = useAuth();
+  const { login, loginWithGoogle, isSupabaseEnabled } = useAuth();
   const [emailOrPhone, setEmailOrPhone] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
   const handleLogin = async () => {
@@ -90,16 +103,38 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setError('');
+    setIsGoogleLoading(true);
+    try {
+      const user = await loginWithGoogle(role);
+      if (role === 'admin') {
+        router.replace('/(admin)' as any);
+      } else if (role === 'traveler' && user.kycStatus !== 'approved') {
+        router.replace('/kyc');
+      } else {
+        router.replace('/(tabs)');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Google sign-in failed. Please try again.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          bounces={false}
         >
           <TouchableOpacity
             testID="back-button"
@@ -114,8 +149,7 @@ export default function LoginScreen() {
             <Text style={styles.roleChipText}>{config.title.toUpperCase()}</Text>
           </View>
 
-          <Text style={styles.title}>Welcome{`
-`}back.</Text>
+          <Text style={styles.title}>Welcome{`\n`}back.</Text>
           <Text style={styles.subtitle}>{config.subtitle}</Text>
 
           {error ? (
@@ -123,6 +157,36 @@ export default function LoginScreen() {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+
+          {role !== 'admin' && isSupabaseEnabled && (
+            <>
+              <TouchableOpacity
+                testID="google-login-btn"
+                style={styles.googleBtn}
+                onPress={handleGoogleLogin}
+                disabled={isGoogleLoading || isLoading}
+                activeOpacity={0.85}
+              >
+                {isGoogleLoading ? (
+                  <ActivityIndicator color={Colors.text} />
+                ) : (
+                  <>
+                    <Image
+                      source={{ uri: 'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg' }}
+                      style={styles.googleIcon}
+                    />
+                    <Text style={styles.googleBtnText}>Continue with Google</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+            </>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email or phone</Text>
@@ -137,6 +201,8 @@ export default function LoginScreen() {
                 onChangeText={setEmailOrPhone}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
               />
             </View>
           </View>
@@ -152,8 +218,24 @@ export default function LoginScreen() {
                 placeholderTextColor={Colors.textTertiary}
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
               />
+              <TouchableOpacity
+                testID="toggle-password-visibility"
+                onPress={() => setShowPassword((v) => !v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.eyeBtn}
+              >
+                {showPassword ? (
+                  <EyeOff size={18} color={Colors.textTertiary} />
+                ) : (
+                  <Eye size={18} color={Colors.textTertiary} />
+                )}
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -165,7 +247,7 @@ export default function LoginScreen() {
             testID="login-btn"
             style={[styles.cta, { backgroundColor: Colors.secondary }, isLoading && styles.ctaDisabled]}
             onPress={handleLogin}
-            disabled={isLoading}
+            disabled={isLoading || isGoogleLoading}
             activeOpacity={0.9}
           >
             {isLoading ? (
@@ -207,6 +289,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 24,
     paddingBottom: 48,
+    flexGrow: 1,
   },
   backBtn: {
     width: 40,
@@ -217,7 +300,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 28,
+    marginBottom: 20,
   },
   roleChip: {
     flexDirection: 'row',
@@ -227,7 +310,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   roleChipText: {
     color: Colors.textInverse,
@@ -236,15 +319,15 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   title: {
-    fontSize: 40,
-    lineHeight: 44,
+    fontSize: 36,
+    lineHeight: 40,
     fontWeight: '800' as const,
     color: Colors.text,
     letterSpacing: -1.2,
   },
   subtitle: {
-    marginTop: 8,
-    marginBottom: 28,
+    marginTop: 6,
+    marginBottom: 20,
     fontSize: 15,
     color: Colors.textSecondary,
   },
@@ -252,11 +335,33 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.errorLight,
     padding: 12,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: Colors.error + '40',
   },
   errorText: { color: Colors.error, fontSize: 13, fontWeight: '600' as const },
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 16,
+  },
+  googleIcon: { width: 18, height: 18 },
+  googleBtnText: { fontSize: 15, fontWeight: '700' as const, color: Colors.text },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText: { fontSize: 11, fontWeight: '700' as const, color: Colors.textTertiary, letterSpacing: 1.2 },
   inputGroup: { marginBottom: 14 },
   label: {
     fontSize: 12,
@@ -281,7 +386,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
   },
-  forgot: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 20 },
+  eyeBtn: {
+    padding: 4,
+  },
+  forgot: { alignSelf: 'flex-end', marginTop: 2, marginBottom: 16 },
   forgotText: { color: Colors.primary, fontSize: 13, fontWeight: '600' as const },
   cta: {
     flexDirection: 'row',
@@ -306,11 +414,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  signupRow: { marginTop: 20, alignItems: 'center' },
+  signupRow: { marginTop: 18, alignItems: 'center' },
   signupText: { fontSize: 14, color: Colors.textSecondary },
   signupLink: { color: Colors.primary, fontWeight: '700' as const },
   testBox: {
-    marginTop: 32,
+    marginTop: 24,
     padding: 14,
     borderRadius: 14,
     backgroundColor: Colors.surfaceSecondary,

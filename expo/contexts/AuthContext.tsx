@@ -10,6 +10,7 @@ import {
   signOut as supabaseSignOut,
   onAuthStateChange,
   getSupabaseClient,
+  signInWithGoogle as supabaseGoogleSignIn,
 } from '@/lib/supabase';
 
 const AUTH_STORAGE_KEY = 'parcel_auth_user';
@@ -372,6 +373,93 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const needsKYC = isTraveler && user?.kycStatus !== 'approved';
   const needsAadhaarVerification = isSender && !user?.aadhaarVerified;
 
+  const loginWithGoogle = useCallback(async (role?: UserRole) => {
+    console.log('[Auth] Google sign-in start, role:', role);
+    setAuthError(null);
+    if (!SUPABASE_AUTH_ENABLED) {
+      const err = new Error('Google sign-in requires Supabase configuration');
+      setAuthError(err.message);
+      throw err;
+    }
+    try {
+      const sessionData = await supabaseGoogleSignIn();
+      const session = (sessionData as { session?: { access_token: string; user?: { id: string; email?: string; user_metadata?: Record<string, unknown> } } }).session;
+      const authUser = session?.user;
+      if (!authUser || !session) {
+        throw new Error('Google sign-in failed');
+      }
+      await AsyncStorage.setItem('auth_token', session.access_token);
+
+      const client = getSupabaseClient();
+      if (!client) throw new Error('Supabase client unavailable');
+
+      const { data: existing } = await client
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      let dbUser = existing;
+      if (!dbUser) {
+        const meta = (authUser.user_metadata || {}) as Record<string, string>;
+        const displayName = meta.full_name || meta.name || (authUser.email ? authUser.email.split('@')[0] : 'User');
+        const avatarUrl = meta.avatar_url || meta.picture || null;
+        const rolesArr = role === 'traveler' ? ['traveler'] : ['sender', 'receiver'];
+        const activeRole = role || 'sender';
+        const { data: inserted, error: insertError } = await client
+          .from('users')
+          .insert({
+            id: authUser.id,
+            name: displayName,
+            email: authUser.email || '',
+            phone: '',
+            roles: rolesArr,
+            active_role: activeRole,
+            avatar_url: avatarUrl,
+            rating: 5.0,
+            total_deliveries: 0,
+            total_shipments: 0,
+            is_verified: false,
+            kyc_status: 'not_submitted',
+          })
+          .select('*')
+          .single();
+        if (insertError) {
+          console.log('[Auth] Google insert user error:', insertError.message);
+        }
+        dbUser = inserted;
+      }
+
+      if (!dbUser) throw new Error('Could not create user profile');
+
+      const appUser: User = {
+        id: dbUser.id,
+        name: dbUser.name,
+        phone: dbUser.phone || '',
+        email: dbUser.email,
+        roles: dbUser.roles || ['sender'],
+        activeRole: role || dbUser.active_role || 'sender',
+        kycStatus: dbUser.kyc_status || 'not_submitted',
+        rating: dbUser.rating || 5.0,
+        totalDeliveries: dbUser.total_deliveries || 0,
+        totalShipments: dbUser.total_shipments || 0,
+        avatarUrl: dbUser.avatar_url,
+        createdAt: dbUser.created_at,
+      };
+
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(appUser));
+      setUser(appUser);
+      setIsAuthenticated(true);
+      setSelectedRole(appUser.activeRole);
+      console.log('[Auth] Google sign-in success:', appUser.id);
+      return appUser;
+    } catch (error: any) {
+      console.log('[Auth] Google sign-in error:', error?.message);
+      setAuthError(error?.message || 'Google sign-in failed');
+      throw error;
+    }
+  }, [SUPABASE_AUTH_ENABLED]);
+
   const clearAuthError = useCallback(() => {
     setAuthError(null);
   }, []);
@@ -383,6 +471,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     selectedRole,
     setSelectedRole,
     login,
+    loginWithGoogle,
     signup,
     logout,
     switchRole,
