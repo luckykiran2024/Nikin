@@ -74,6 +74,33 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
     },
   });
 
+  const acceptJobMutation = trpc.shipments.acceptJob.useMutation({
+    onSuccess: () => {
+      utils.shipments.getAll.invalidate();
+    },
+  });
+
+  const declineJobMutation = trpc.shipments.declineJob.useMutation({
+    onSuccess: () => {
+      utils.shipments.getAll.invalidate();
+      utils.quotes.getAll.invalidate();
+    },
+  });
+
+  const autoCancelAcceptanceMutation = trpc.shipments.autoCancelExpiredAcceptance.useMutation({
+    onSuccess: () => {
+      utils.shipments.getAll.invalidate();
+      utils.quotes.getAll.invalidate();
+    },
+  });
+
+  const cancelShipmentMutation = trpc.shipments.cancel.useMutation({
+    onSuccess: () => {
+      utils.shipments.getAll.invalidate();
+      utils.quotes.getAll.invalidate();
+    },
+  });
+
   const createQuoteMutation = trpc.quotes.create.useMutation({
     onSuccess: () => {
       utils.quotes.getAll.invalidate();
@@ -207,6 +234,37 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
     const result = await markOutForDeliveryMutation.mutateAsync({ id: shipmentId });
     return { success: result.success, deliveryOtp: result.deliveryOtp };
   }, [markOutForDeliveryMutation]);
+
+  const acceptJob = useCallback(async (shipmentId: string, travelerId: string) => {
+    const result = await acceptJobMutation.mutateAsync({ id: shipmentId, travelerId });
+    if (!result.success) throw new Error(result.error || 'Failed to accept job');
+    return result.shipment;
+  }, [acceptJobMutation]);
+
+  const declineJob = useCallback(async (shipmentId: string, travelerId: string, reason?: string) => {
+    const result = await declineJobMutation.mutateAsync({ id: shipmentId, travelerId, reason });
+    if (!result.success) throw new Error(result.error || 'Failed to decline job');
+    return result.shipment;
+  }, [declineJobMutation]);
+
+  const autoCancelAcceptance = useCallback(async (shipmentId: string) => {
+    try {
+      await autoCancelAcceptanceMutation.mutateAsync({ id: shipmentId });
+    } catch (e) {
+      console.log('[autoCancelAcceptance] ignored', e);
+    }
+  }, [autoCancelAcceptanceMutation]);
+
+  const cancelShipment = useCallback(async (
+    shipmentId: string,
+    userId: string,
+    reason: 'user_cancelled' | 'traveler_declined' | 'traveler_timeout' | 'admin_cancelled' | 'other' = 'user_cancelled',
+    note?: string,
+  ) => {
+    const result = await cancelShipmentMutation.mutateAsync({ id: shipmentId, userId, reason, note });
+    if (!result.success) throw new Error(result.error || 'Failed to cancel shipment');
+    return result.shipment;
+  }, [cancelShipmentMutation]);
 
   // Quote functions
   const createQuote = useCallback(async (quoteData: Omit<Quote, 'id' | 'createdAt' | 'status'>) => {
@@ -446,6 +504,10 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
     verifyPickupOTP,
     verifyDeliveryOTP,
     markOutForDelivery,
+    acceptJob,
+    declineJob,
+    autoCancelAcceptance,
+    cancelShipment,
     createQuote,
     acceptQuote,
     createRoute,

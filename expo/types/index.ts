@@ -1,7 +1,8 @@
 export type UserRole = 'sender' | 'traveler' | 'receiver' | 'admin';
 export type KYCStatus = 'pending' | 'approved' | 'rejected' | 'not_submitted';
-export type ShipmentStatus = 'created' | 'quoted' | 'assigned' | 'payment_pending' | 'confirmed' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'completed';
-export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+export type ShipmentStatus = 'created' | 'quoted' | 'pending_acceptance' | 'assigned' | 'payment_pending' | 'confirmed' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'completed' | 'cancelled';
+export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'declined';
+export type CancellationReason = 'user_cancelled' | 'traveler_declined' | 'traveler_timeout' | 'admin_cancelled' | 'other';
 export type PaymentStatus = 'initiated' | 'held' | 'released' | 'failed' | 'cod_pending';
 export type PaymentMethod = 'upi' | 'card' | 'netbanking' | 'wallet' | 'paylater' | 'emi' | 'cod';
 export type Gender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
@@ -95,6 +96,14 @@ export interface Shipment {
   deliveryImages?: string[];
   deliveryConfirmedAt?: string;
   receiverSignature?: string;
+  // Job acceptance (traveler must accept within deadline after quote accepted)
+  jobAcceptDeadline?: string;
+  jobAcceptedAt?: string;
+  // Cancellation
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: CancellationReason;
+  cancellationNote?: string;
 }
 
 export interface GeoCoordinates {

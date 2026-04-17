@@ -88,7 +88,7 @@ export default function ShipmentsScreen() {
     if (!isTraveler) return [];
     return shipments.filter(s => 
       s.assignedTravelerId === user?.id && 
-      (s.status === 'assigned' || s.status === 'picked_up' || s.status === 'in_transit' || s.status === 'delivered' || s.status === 'completed')
+      (s.status === 'pending_acceptance' || s.status === 'assigned' || s.status === 'picked_up' || s.status === 'in_transit' || s.status === 'out_for_delivery' || s.status === 'delivered' || s.status === 'completed')
     );
   }, [shipments, isTraveler, user?.id]);
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTRPCRouter, publicProcedure } from '../create-context';
 import { db } from '../../db/store';
+import { TRUST_LIMITS } from '@/constants/trustLimits';
 
 export const quotesRouter = createTRPCRouter({
   create: publicProcedure
@@ -102,23 +103,27 @@ export const quotesRouter = createTRPCRouter({
         shipmentId: quote.shipmentId,
       });
 
+      const jobAcceptDeadline = new Date(Date.now() + TRUST_LIMITS.JOB_ACCEPT_WINDOW_MS).toISOString();
+
       db.updateShipment(quote.shipmentId, {
-        status: 'assigned',
+        status: 'pending_acceptance',
         assignedTravelerId: quote.travelerId,
         assignedTravelerName: quote.travelerName,
         acceptedQuoteAmount: quote.amount,
         chatId: conversation.id,
+        jobAcceptDeadline,
       });
 
+      const minutes = Math.round(TRUST_LIMITS.JOB_ACCEPT_WINDOW_MS / 60000);
       db.createNotification({
         userId: quote.travelerId,
-        title: 'Quote Accepted!',
-        message: `Your quote of ₹${quote.amount} for shipment ${shipment.parcelRequestId} has been accepted. Coordinate pickup with the sender. Payment is collected offline on delivery.`,
+        title: 'Quote Accepted \u2014 Action Required',
+        message: `Your quote for ${shipment.parcelRequestId} was accepted. Please confirm the job within ${minutes} minutes or it will be reopened.`,
         type: 'quote',
-        data: { shipmentId: quote.shipmentId, quoteId: quote.id },
+        data: { shipmentId: quote.shipmentId, quoteId: quote.id, jobAcceptDeadline },
       });
 
-      return { success: true, quote: db.getQuoteById(input.id), conversationId: conversation.id };
+      return { success: true, quote: db.getQuoteById(input.id), conversationId: conversation.id, jobAcceptDeadline };
     }),
 
   reject: publicProcedure

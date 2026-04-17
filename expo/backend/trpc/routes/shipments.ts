@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTRPCRouter, publicProcedure } from '../create-context';
 import { db } from '../../db/store';
+import { TRUST_LIMITS, ACTIVE_SHIPMENT_STATUSES, getCancellationStage } from '@/constants/trustLimits';
 
 const parcelDetailsSchema = z.object({
   description: z.string(),
@@ -37,6 +38,26 @@ export const shipmentsRouter = createTRPCRouter({
       specialInstructions: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
+      // Sender trust limits
+      const parcelValue = input.parcelDetails.estimatedValue || 0;
+      if (parcelValue > TRUST_LIMITS.MAX_PARCEL_VALUE_INR) {
+        return {
+          success: false as const,
+          error: `Parcel value exceeds the pilot limit of \u20B9${TRUST_LIMITS.MAX_PARCEL_VALUE_INR.toLocaleString('en-IN')}. For higher-value items please contact support.`,
+        };
+      }
+
+      const senderShipments = db.getShipmentsBySenderId(input.senderId);
+      const activeCount = senderShipments.filter(s =>
+        (ACTIVE_SHIPMENT_STATUSES as readonly string[]).includes(s.status)
+      ).length;
+      if (activeCount >= TRUST_LIMITS.MAX_ACTIVE_REQUESTS_PER_SENDER) {
+        return {
+          success: false as const,
+          error: `You already have ${activeCount} active shipments. Please complete or cancel one before creating a new request (limit: ${TRUST_LIMITS.MAX_ACTIVE_REQUESTS_PER_SENDER}).`,
+        };
+      }
+
       const shipment = db.createShipment({
         ...input,
         status: 'created',
@@ -50,7 +71,7 @@ export const shipmentsRouter = createTRPCRouter({
         data: { shipmentId: shipment.id },
       });
 
-      return { success: true, shipment };
+      return { success: true as const, shipment };
     }),
 
   getById: publicProcedure
@@ -95,7 +116,7 @@ export const shipmentsRouter = createTRPCRouter({
   update: publicProcedure
     .input(z.object({
       id: z.string(),
-      status: z.enum(['created', 'quoted', 'assigned', 'payment_pending', 'confirmed', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'completed']).optional(),
+      status: z.enum(['created', 'quoted', 'pending_acceptance', 'assigned', 'payment_pending', 'confirmed', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'completed', 'cancelled']).optional(),
       assignedTravelerId: z.string().optional(),
       assignedTravelerName: z.string().optional(),
       assignedTravelerPhone: z.string().optional(),
@@ -317,5 +338,184 @@ export const shipmentsRouter = createTRPCRouter({
       }
 
       return { success: true, shipment };
+    }),
+
+  acceptJob: publicProcedure
+    .input(z.object({ id: z.string(), travelerId: z.string() }))
+    .mutation(async ({ input }) => {
+      const shipment = db.getShipmentById(input.id);
+      if (!shipment) return { success: false as const, error: 'Shipment not found' };
+      if (shipment.assignedTravelerId !== input.travelerId) {
+        return { success: false as const, error: 'Only the assigned traveler can accept this job' };
+      }
+      if (shipment.status !== 'pending_acceptance') {
+        return { success: false as const, error: 'This job is not awaiting acceptance' };
+      }
+      if (shipment.jobAcceptDeadline && new Date(shipment.jobAcceptDeadline).getTime() < Date.now()) {
+        return { success: false as const, error: 'Acceptance window has expired' };
+      }
+
+      const updated = db.updateShipment(input.id, {
+        status: 'assigned',
+        jobAcceptedAt: new Date().toISOString(),
+      });
+
+      db.createNotification({
+        userId: shipment.senderId,
+        title: 'Traveler Accepted Job',
+        message: `${shipment.assignedTravelerName} has accepted your shipment ${shipment.parcelRequestId}. Please proceed to payment.`,
+        type: 'shipment',
+        data: { shipmentId: shipment.id },
+      });
+
+      return { success: true as const, shipment: updated };
+    }),
+
+  declineJob: publicProcedure
+    .input(z.object({ id: z.string(), travelerId: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      const shipment = db.getShipmentById(input.id);
+      if (!shipment) return { success: false as const, error: 'Shipment not found' };
+      if (shipment.assignedTravelerId !== input.travelerId) {
+        return { success: false as const, error: 'Only the assigned traveler can decline this job' };
+      }
+      if (shipment.status !== 'pending_acceptance' && shipment.status !== 'assigned') {
+        return { success: false as const, error: 'Job cannot be declined at this stage' };
+      }
+
+      // Mark accepted quote as declined and reopen shipment for new quotes
+      const allQuotes = db.getQuotesForShipment(input.id);
+      allQuotes.forEach(q => {
+        if (q.travelerId === input.travelerId && q.status === 'accepted') {
+          db.updateQuote(q.id, { status: 'declined' });
+        }
+      });
+
+      const updated = db.updateShipment(input.id, {
+        status: 'quoted',
+        assignedTravelerId: undefined,
+        assignedTravelerName: undefined,
+        assignedTravelerPhone: undefined,
+        acceptedQuoteAmount: undefined,
+        chatId: undefined,
+        jobAcceptDeadline: undefined,
+      });
+
+      db.createNotification({
+        userId: shipment.senderId,
+        title: 'Traveler Declined',
+        message: `${shipment.assignedTravelerName} declined your shipment ${shipment.parcelRequestId}. You can accept another quote.`,
+        type: 'shipment',
+        data: { shipmentId: shipment.id },
+      });
+
+      return { success: true as const, shipment: updated };
+    }),
+
+  autoCancelExpiredAcceptance: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const shipment = db.getShipmentById(input.id);
+      if (!shipment) return { success: false as const, error: 'Shipment not found' };
+      if (shipment.status !== 'pending_acceptance') {
+        return { success: false as const, error: 'Not awaiting acceptance' };
+      }
+      if (!shipment.jobAcceptDeadline || new Date(shipment.jobAcceptDeadline).getTime() > Date.now()) {
+        return { success: false as const, error: 'Deadline not reached' };
+      }
+
+      const allQuotes = db.getQuotesForShipment(input.id);
+      allQuotes.forEach(q => {
+        if (q.travelerId === shipment.assignedTravelerId && q.status === 'accepted') {
+          db.updateQuote(q.id, { status: 'expired' });
+        }
+      });
+
+      const updated = db.updateShipment(input.id, {
+        status: 'quoted',
+        assignedTravelerId: undefined,
+        assignedTravelerName: undefined,
+        assignedTravelerPhone: undefined,
+        acceptedQuoteAmount: undefined,
+        chatId: undefined,
+        jobAcceptDeadline: undefined,
+      });
+
+      if (shipment.assignedTravelerId) {
+        db.createNotification({
+          userId: shipment.assignedTravelerId,
+          title: 'Job Timed Out',
+          message: `You did not accept shipment ${shipment.parcelRequestId} in time. It has been reopened.`,
+          type: 'shipment',
+          data: { shipmentId: shipment.id },
+        });
+      }
+      db.createNotification({
+        userId: shipment.senderId,
+        title: 'Traveler Did Not Respond',
+        message: `Your shipment ${shipment.parcelRequestId} is open again \u2014 the traveler did not accept in time.`,
+        type: 'shipment',
+        data: { shipmentId: shipment.id },
+      });
+
+      return { success: true as const, shipment: updated };
+    }),
+
+  cancel: publicProcedure
+    .input(z.object({
+      id: z.string(),
+      userId: z.string(),
+      reason: z.enum(['user_cancelled', 'traveler_declined', 'traveler_timeout', 'admin_cancelled', 'other']).default('user_cancelled'),
+      note: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const shipment = db.getShipmentById(input.id);
+      if (!shipment) return { success: false as const, error: 'Shipment not found' };
+
+      const stage = getCancellationStage(shipment.status);
+      if (stage === 'not_allowed') {
+        return { success: false as const, error: 'This shipment cannot be cancelled' };
+      }
+      if (stage === 'dispute_only') {
+        return {
+          success: false as const,
+          error: 'Cancellation not allowed after pickup. Please raise a dispute via support instead.',
+        };
+      }
+
+      const isSender = shipment.senderId === input.userId;
+      const isTraveler = shipment.assignedTravelerId === input.userId;
+      if (!isSender && !isTraveler) {
+        return { success: false as const, error: 'Not authorised to cancel this shipment' };
+      }
+
+      // Mark pending quotes as expired
+      const allQuotes = db.getQuotesForShipment(input.id);
+      allQuotes.forEach(q => {
+        if (q.status === 'pending' || q.status === 'accepted') {
+          db.updateQuote(q.id, { status: 'expired' });
+        }
+      });
+
+      const updated = db.updateShipment(input.id, {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancelledBy: input.userId,
+        cancellationReason: input.reason,
+        cancellationNote: input.note,
+      });
+
+      const targetUserId = isSender ? shipment.assignedTravelerId : shipment.senderId;
+      if (targetUserId) {
+        db.createNotification({
+          userId: targetUserId,
+          title: 'Shipment Cancelled',
+          message: `Shipment ${shipment.parcelRequestId} has been cancelled${stage === 'restricted' ? ' (after assignment)' : ''}.`,
+          type: 'shipment',
+          data: { shipmentId: shipment.id },
+        });
+      }
+
+      return { success: true as const, shipment: updated, stage };
     }),
 });

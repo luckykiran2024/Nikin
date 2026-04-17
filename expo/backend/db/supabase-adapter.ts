@@ -133,6 +133,12 @@ export class SupabaseAdapter {
       pickupDetailsCompleted: row.pickup_details_completed,
       deliveryImages: row.delivery_images,
       deliveryConfirmedAt: row.delivery_confirmed_at,
+      jobAcceptDeadline: row.job_accept_deadline,
+      jobAcceptedAt: row.job_accepted_at,
+      cancelledAt: row.cancelled_at,
+      cancelledBy: row.cancelled_by,
+      cancellationReason: row.cancellation_reason,
+      cancellationNote: row.cancellation_note,
     };
   }
 
@@ -178,6 +184,12 @@ export class SupabaseAdapter {
     if (shipment.deliveryImages !== undefined) result.delivery_images = shipment.deliveryImages;
     if (shipment.deliveryConfirmedAt !== undefined) result.delivery_confirmed_at = shipment.deliveryConfirmedAt;
     if (shipment.deliveryOtp !== undefined) result.delivery_otp = shipment.deliveryOtp;
+    if (shipment.jobAcceptDeadline !== undefined) result.job_accept_deadline = shipment.jobAcceptDeadline;
+    if (shipment.jobAcceptedAt !== undefined) result.job_accepted_at = shipment.jobAcceptedAt;
+    if (shipment.cancelledAt !== undefined) result.cancelled_at = shipment.cancelledAt;
+    if (shipment.cancelledBy !== undefined) result.cancelled_by = shipment.cancelledBy;
+    if (shipment.cancellationReason !== undefined) result.cancellation_reason = shipment.cancellationReason;
+    if (shipment.cancellationNote !== undefined) result.cancellation_note = shipment.cancellationNote;
     return result;
   }
 

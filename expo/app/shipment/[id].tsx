@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -37,21 +37,33 @@ import {
   ChevronDown,
   Navigation,
   Gift,
+  XCircle,
+  Zap,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
 import { useLiveLocationEmitter } from '@/hooks/useLiveLocationEmitter';
+import { getCancellationStage } from '@/constants/trustLimits';
 
 const statusSteps = [
   { key: 'created', label: 'Created', icon: Package },
   { key: 'quoted', label: 'Quoted', icon: Clock },
+  { key: 'pending_acceptance', label: 'Awaiting Accept', icon: Zap },
   { key: 'assigned', label: 'Assigned', icon: User },
   { key: 'picked_up', label: 'Picked Up', icon: Check },
   { key: 'in_transit', label: 'In Transit', icon: Truck },
   { key: 'out_for_delivery', label: 'Out for Delivery', icon: Navigation },
   { key: 'delivered', label: 'Delivered', icon: CheckCircle },
 ];
+
+const statusIndexFor = (status: string): number => {
+  const i = statusSteps.findIndex(s => s.key === status);
+  if (i >= 0) return i;
+  if (status === 'confirmed' || status === 'payment_pending') return statusSteps.findIndex(s => s.key === 'assigned');
+  if (status === 'completed') return statusSteps.length - 1;
+  return -1;
+};
 
 export default function ShipmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -66,6 +78,10 @@ export default function ShipmentDetailScreen() {
     verifyDeliveryOTP,
     updateShipment,
     markOutForDelivery,
+    acceptJob,
+    declineJob,
+    autoCancelAcceptance,
+    cancelShipment,
   } = useDataStore();
 
   const [selectedQuote, setSelectedQuote] = useState<string | null>(null);
@@ -106,7 +122,94 @@ export default function ShipmentDetailScreen() {
     );
   }
 
-  const currentStepIndex = statusSteps.findIndex(s => s.key === shipment.status);
+  const currentStepIndex = statusIndexFor(shipment.status);
+  const cancellationStage = getCancellationStage(shipment.status);
+  const canCancel = (isSender || isTraveler) && (cancellationStage === 'free' || cancellationStage === 'restricted');
+
+  // Job acceptance countdown
+  const deadlineTs = shipment.jobAcceptDeadline ? new Date(shipment.jobAcceptDeadline).getTime() : null;
+  const [now, setNow] = useState<number>(Date.now());
+  useEffect(() => {
+    if (shipment.status !== 'pending_acceptance' || !deadlineTs) return;
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [shipment.status, deadlineTs]);
+
+  const timeLeftMs = deadlineTs ? Math.max(0, deadlineTs - now) : 0;
+  const timeLeftLabel = useMemo(() => {
+    const s = Math.floor(timeLeftMs / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
+  }, [timeLeftMs]);
+
+  useEffect(() => {
+    if (shipment.status === 'pending_acceptance' && deadlineTs && timeLeftMs === 0) {
+      console.log('[JobAccept] Deadline reached, auto-cancelling');
+      autoCancelAcceptance(shipment.id).catch(() => {});
+    }
+  }, [shipment.id, shipment.status, deadlineTs, timeLeftMs, autoCancelAcceptance]);
+
+  const handleAcceptJob = async () => {
+    if (!user) return;
+    try {
+      await acceptJob(shipment.id, user.id);
+      Alert.alert('Job Accepted', 'You have accepted this shipment. The sender will now proceed to payment.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to accept job');
+    }
+  };
+
+  const handleDeclineJob = () => {
+    if (!user) return;
+    Alert.alert(
+      'Decline Job?',
+      'The shipment will be reopened to other travelers. This may affect your acceptance rate.',
+      [
+        { text: 'Keep Job', style: 'cancel' },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await declineJob(shipment.id, user.id);
+              Alert.alert('Job Declined', 'The shipment has been reopened.');
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to decline job');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelShipment = () => {
+    if (!user) return;
+    const warn = cancellationStage === 'restricted'
+      ? '\n\nNote: This shipment is already assigned. Cancelling now may affect your rating.'
+      : '';
+    Alert.alert(
+      'Cancel Shipment?',
+      `Are you sure you want to cancel ${shipment.parcelRequestId}?${warn}`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Cancel Shipment',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelShipment(shipment.id, user.id, 'user_cancelled');
+              Alert.alert('Cancelled', 'Shipment has been cancelled.', [
+                { text: 'OK', onPress: () => router.back() },
+              ]);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to cancel shipment');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleAcceptQuote = async (quoteId: string) => {
     const quote = quotes.find(q => q.id === quoteId);
@@ -114,23 +217,18 @@ export default function ShipmentDetailScreen() {
 
     Alert.alert(
       'Accept Quote',
-      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nYou'll be taken to secure Razorpay checkout to pay online (UPI, cards, netbanking, wallets & pay-later supported).`,
+      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nThe traveler must confirm the job within 15 minutes before you proceed to secure payment.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Accept & Pay',
+          text: 'Accept Quote',
           onPress: async () => {
             try {
               await acceptQuote(quoteId, createConversation);
-              router.push({
-                pathname: '/payment',
-                params: {
-                  shipmentId: shipment.id,
-                  quoteId: quote.id,
-                  amount: quote.amount.toString(),
-                  travelerName: quote.travelerName,
-                },
-              });
+              Alert.alert(
+                'Quote Accepted',
+                'Waiting for the traveler to confirm the job. You\u2019ll be notified to pay once they accept.'
+              );
             } catch (e) {
               console.log('Accept quote error', e);
               Alert.alert('Error', 'Failed to accept quote. Please try again.');
@@ -139,6 +237,18 @@ export default function ShipmentDetailScreen() {
         },
       ]
     );
+  };
+
+  const handleProceedToPayment = () => {
+    if (!shipment.acceptedQuoteAmount || !shipment.assignedTravelerName) return;
+    router.push({
+      pathname: '/payment',
+      params: {
+        shipmentId: shipment.id,
+        amount: String(shipment.acceptedQuoteAmount),
+        travelerName: shipment.assignedTravelerName,
+      },
+    });
   };
 
   const handleSubmitQuote = () => {
@@ -457,6 +567,62 @@ export default function ShipmentDetailScreen() {
             })}
           </View>
         </View>
+
+        {shipment.status === 'cancelled' && (
+          <View style={styles.cancelledBanner}>
+            <XCircle size={20} color={Colors.error} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cancelledTitle}>Shipment Cancelled</Text>
+              {shipment.cancelledAt && (
+                <Text style={styles.cancelledSubtitle}>
+                  {new Date(shipment.cancelledAt).toLocaleString()}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+
+        {isTraveler && shipment.status === 'pending_acceptance' && shipment.assignedTravelerId === user?.id && (
+          <View style={styles.acceptJobCard}>
+            <View style={styles.acceptJobHeader}>
+              <Zap size={20} color={Colors.warning} />
+              <Text style={styles.acceptJobTitle}>Confirm This Job</Text>
+            </View>
+            <Text style={styles.acceptJobBody}>
+              Your quote was accepted. Confirm within the window below or the job will be reopened.
+            </Text>
+            <View style={styles.countdownPill}>
+              <Clock size={14} color={Colors.warning} />
+              <Text style={styles.countdownText}>Time left: {timeLeftLabel}</Text>
+            </View>
+            <View style={styles.acceptJobActions}>
+              <TouchableOpacity style={styles.declineJobBtn} onPress={handleDeclineJob}>
+                <Text style={styles.declineJobText}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.acceptJobBtn} onPress={handleAcceptJob}>
+                <Check size={18} color={Colors.textInverse} />
+                <Text style={styles.acceptJobBtnText}>Accept Job</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {isSender && shipment.status === 'assigned' && !shipment.paymentCompleted && (
+          <TouchableOpacity style={styles.payNowBtn} onPress={handleProceedToPayment} testID="proceed-to-payment">
+            <IndianRupee size={20} color={Colors.textInverse} />
+            <Text style={styles.payNowText}>Proceed to Pay ₹{shipment.acceptedQuoteAmount}</Text>
+          </TouchableOpacity>
+        )}
+
+        {isSender && shipment.status === 'pending_acceptance' && (
+          <View style={styles.waitingCard}>
+            <Clock size={20} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.waitingTitle}>Waiting for traveler to accept</Text>
+              <Text style={styles.waitingSubtitle}>Time left: {timeLeftLabel}</Text>
+            </View>
+          </View>
+        )}
 
         {(shipment.status === 'in_transit' || shipment.status === 'picked_up') && (
           <TouchableOpacity 
@@ -993,6 +1159,15 @@ export default function ShipmentDetailScreen() {
           </View>
         )}
 
+        {canCancel && (
+          <TouchableOpacity style={styles.cancelShipmentBtn} onPress={handleCancelShipment} testID="cancel-shipment">
+            <XCircle size={18} color={Colors.error} />
+            <Text style={styles.cancelShipmentText}>
+              {cancellationStage === 'free' ? 'Cancel Shipment' : 'Cancel Shipment (assigned)'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Assigned Traveler Info for Sender */}
         {isSender && shipment.assignedTravelerId && shipment.status !== 'created' && shipment.status !== 'quoted' && (
           <View style={styles.section}>
@@ -1240,6 +1415,151 @@ const styles = StyleSheet.create({
   },
   statusLineCompleted: {
     backgroundColor: Colors.success,
+  },
+  acceptJobCard: {
+    backgroundColor: Colors.warningLight,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  acceptJobHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  acceptJobTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  acceptJobBody: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  countdownPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.surface,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  countdownText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.warning,
+  },
+  acceptJobActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  declineJobBtn: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  declineJobText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.error,
+  },
+  acceptJobBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: Colors.success,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  acceptJobBtnText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.textInverse,
+  },
+  waitingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.primaryLight + '20',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  waitingTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  waitingSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  cancelledBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEE2E2',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  cancelledTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: Colors.error,
+  },
+  cancelledSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  cancelShipmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  cancelShipmentText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.error,
+  },
+  payNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.success,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  payNowText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.textInverse,
   },
   trackButton: {
     flexDirection: 'row',

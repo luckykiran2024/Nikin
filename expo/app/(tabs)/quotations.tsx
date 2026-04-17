@@ -63,24 +63,20 @@ export default function QuotationsScreen() {
   const handleAcceptQuote = async (quote: Quote, shipment: Shipment) => {
     Alert.alert(
       'Accept Quote',
-      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nEstimated delivery: ${formatDate(quote.estimatedDelivery)}`,
+      `Accept quote of ₹${quote.amount} from ${quote.travelerName}?\n\nEstimated delivery: ${formatDate(quote.estimatedDelivery)}\n\nThe traveler must confirm the job within 15 minutes before payment.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Accept & Pay',
+          text: 'Accept Quote',
           onPress: async () => {
             setAcceptingQuoteId(quote.id);
             try {
               await acceptQuote(quote.id, createConversation);
-              router.push({
-                pathname: '/payment',
-                params: {
-                  shipmentId: shipment.id,
-                  quoteId: quote.id,
-                  amount: quote.amount.toString(),
-                  travelerName: quote.travelerName,
-                },
-              });
+              Alert.alert(
+                'Quote Accepted',
+                'Waiting for the traveler to confirm. You\u2019ll be notified to pay once they accept.',
+                [{ text: 'OK', onPress: () => router.push(`/shipment/${shipment.id}` as any) }]
+              );
             } catch {
               Alert.alert('Error', 'Failed to accept quote. Please try again.');
             } finally {
@@ -262,7 +258,7 @@ export default function QuotationsScreen() {
                       </View>
                     )}
 
-                    {quote.status === 'pending' && group.shipment.status !== 'assigned' && (
+                    {quote.status === 'pending' && group.shipment.status !== 'assigned' && group.shipment.status !== 'pending_acceptance' && (
                       <TouchableOpacity
                         style={[styles.acceptButton, acceptingQuoteId === quote.id && styles.acceptButtonDisabled]}
                         onPress={() => handleAcceptQuote(quote, group.shipment)}
