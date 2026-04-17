@@ -1,8 +1,9 @@
 export type UserRole = 'sender' | 'traveler' | 'receiver' | 'admin';
 export type KYCStatus = 'pending' | 'approved' | 'rejected' | 'not_submitted';
-export type ShipmentStatus = 'created' | 'quoted' | 'pending_acceptance' | 'assigned' | 'payment_pending' | 'confirmed' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'completed' | 'cancelled';
+export type ShipmentStatus = 'created' | 'quoted' | 'pending_acceptance' | 'assigned' | 'payment_pending' | 'confirmed' | 'pickup_delayed' | 'no_show' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivery_attempted' | 'delivered' | 'returning' | 'returned' | 'completed' | 'cancelled';
 export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'declined';
-export type CancellationReason = 'user_cancelled' | 'traveler_declined' | 'traveler_timeout' | 'admin_cancelled' | 'other';
+export type CancellationReason = 'user_cancelled' | 'traveler_declined' | 'traveler_timeout' | 'admin_cancelled' | 'no_show' | 'other';
+export type DisputeType = 'not_delivered' | 'wrong_item' | 'damaged' | 'payment_issue' | 'other';
 export type PaymentStatus = 'initiated' | 'held' | 'released' | 'failed' | 'cod_pending';
 export type PaymentMethod = 'upi' | 'card' | 'netbanking' | 'wallet' | 'paylater' | 'emi' | 'cod';
 export type Gender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
@@ -104,6 +105,46 @@ export interface Shipment {
   cancelledBy?: string;
   cancellationReason?: CancellationReason;
   cancellationNote?: string;
+  // Time windows
+  pickupWindowStart?: string;
+  pickupWindowEnd?: string;
+  deliveryWindowStart?: string;
+  deliveryWindowEnd?: string;
+  // No-show & reassignment
+  noShowAt?: string;
+  noShowMarkedBy?: string;
+  reassignmentRequested?: boolean;
+  // Delivery attempted / return flow
+  deliveryAttemptedAt?: string;
+  deliveryAttemptReason?: string;
+  rescheduledDeliveryDate?: string;
+  returnReason?: string;
+  returnedAt?: string;
+  // Rating
+  senderRating?: number;
+  travelerRating?: number;
+  // Dispute
+  disputeId?: string;
+}
+
+export interface Dispute {
+  id: string;
+  shipmentId: string;
+  raisedBy: string;
+  type: DisputeType;
+  description: string;
+  status: 'open' | 'in_review' | 'resolved' | 'closed';
+  createdAt: string;
+  resolvedAt?: string;
+  resolution?: string;
+}
+
+export interface UserRiskFlags {
+  userId: string;
+  cancellations7d: number;
+  disputes30d: number;
+  highValueRequests24h: number;
+  lastUpdated: string;
 }
 
 export interface GeoCoordinates {

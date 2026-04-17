@@ -9,6 +9,8 @@ import {
   EscalatedTicket,
   Payment,
   KYCRequest,
+  Dispute,
+  UserRiskFlags,
 } from '@/types';
 
 const generateParcelRequestId = (): string => {
@@ -36,6 +38,8 @@ interface Database {
   tickets: Map<string, EscalatedTicket>;
   payments: Map<string, Payment>;
   kycRequests: Map<string, KYCRequest>;
+  disputes: Map<string, Dispute>;
+  riskFlags: Map<string, UserRiskFlags>;
 }
 
 class InMemoryStore {
@@ -50,6 +54,8 @@ class InMemoryStore {
     tickets: new Map(),
     payments: new Map(),
     kycRequests: new Map(),
+    disputes: new Map(),
+    riskFlags: new Map(),
   };
 
   // Users
@@ -467,6 +473,69 @@ class InMemoryStore {
     };
   }
 
+  // Disputes
+  createDispute(data: Omit<Dispute, 'id' | 'createdAt' | 'status'>): Dispute {
+    const id = `disp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const dispute: Dispute = {
+      ...data,
+      id,
+      createdAt: new Date().toISOString(),
+      status: 'open',
+    };
+    this.db.disputes.set(id, dispute);
+    console.log('[DB] Created dispute:', id, 'for shipment:', data.shipmentId);
+    return dispute;
+  }
+
+  getDisputeByShipmentId(shipmentId: string): Dispute | undefined {
+    return Array.from(this.db.disputes.values()).find(d => d.shipmentId === shipmentId);
+  }
+
+  getAllDisputes(): Dispute[] {
+    return Array.from(this.db.disputes.values());
+  }
+
+  updateDispute(id: string, updates: Partial<Dispute>): Dispute | undefined {
+    const d = this.db.disputes.get(id);
+    if (!d) return undefined;
+    const updated = { ...d, ...updates };
+    this.db.disputes.set(id, updated);
+    return updated;
+  }
+
+  // Risk flags
+  computeRiskFlags(userId: string): UserRiskFlags {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    const shipments = Array.from(this.db.shipments.values()).filter(s => s.senderId === userId);
+    const cancellations7d = shipments.filter(s =>
+      s.status === 'cancelled' && s.cancelledAt &&
+      now - new Date(s.cancelledAt).getTime() < 7 * day
+    ).length;
+    const disputes30d = Array.from(this.db.disputes.values()).filter(d => {
+      const shp = this.db.shipments.get(d.shipmentId);
+      if (!shp || shp.senderId !== userId) return false;
+      return now - new Date(d.createdAt).getTime() < 30 * day;
+    }).length;
+    const highValueRequests24h = shipments.filter(s =>
+      (s.parcelDetails?.estimatedValue ?? 0) >= 10000 &&
+      now - new Date(s.createdAt).getTime() < day
+    ).length;
+    const flags: UserRiskFlags = {
+      userId,
+      cancellations7d,
+      disputes30d,
+      highValueRequests24h,
+      lastUpdated: new Date().toISOString(),
+    };
+    this.db.riskFlags.set(userId, flags);
+    return flags;
+  }
+
+  getRiskFlags(userId: string): UserRiskFlags | undefined {
+    return this.db.riskFlags.get(userId);
+  }
+
   // Clear all data (for testing)
   clearAll(): void {
     this.db.users.clear();
@@ -479,6 +548,8 @@ class InMemoryStore {
     this.db.tickets.clear();
     this.db.payments.clear();
     this.db.kycRequests.clear();
+    this.db.disputes.clear();
+    this.db.riskFlags.clear();
     console.log('[DB] All data cleared');
   }
 }

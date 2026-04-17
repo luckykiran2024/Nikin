@@ -41,7 +41,7 @@ function RootLayoutNav() {
     const inAdminGroup = segments[0] === '(admin)';
 
     if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/(auth)/role-select');
+      router.replace('/(auth)/login');
     } else if (isAuthenticated) {
       if (isAdmin && !inAdminGroup) {
         router.replace('/(admin)/dashboard' as any);

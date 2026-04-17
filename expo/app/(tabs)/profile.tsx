@@ -26,6 +26,7 @@ import {
   XCircle,
   Trash2,
   Wallet,
+  Plane,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,7 +34,7 @@ import { useDataStore } from '@/contexts/DataStoreContext';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, becomeTraveler } = useAuth();
   const { clearAllData } = useDataStore();
 
   const handleLogout = () => {
@@ -135,6 +136,27 @@ export default function ProfileScreen() {
   };
 
   const isTraveler = user.activeRole === 'traveler';
+  const canBecomeTraveler = !isTraveler && !user.roles.includes('traveler');
+
+  const handleBecomeTraveler = async () => {
+    if (user.kycStatus !== 'approved') {
+      Alert.alert(
+        'KYC Required',
+        'Complete KYC verification first to unlock Traveler mode.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Start KYC', onPress: () => router.push('/kyc' as any) },
+        ],
+      );
+      return;
+    }
+    try {
+      await becomeTraveler();
+      Alert.alert('Welcome, Traveler!', 'You can now accept delivery jobs.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to enable Traveler mode');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -189,6 +211,28 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        {canBecomeTraveler && (
+          <TouchableOpacity
+            testID="become-traveler-cta"
+            style={styles.becomeCard}
+            onPress={handleBecomeTraveler}
+            activeOpacity={0.9}
+          >
+            <View style={styles.becomeIcon}>
+              <Plane size={24} color={Colors.textInverse} />
+            </View>
+            <View style={styles.becomeContent}>
+              <Text style={styles.becomeTitle}>Become a Traveler</Text>
+              <Text style={styles.becomeSubtitle}>
+                {user.kycStatus === 'approved'
+                  ? 'Earn by carrying parcels on trips you\u2019re already taking.'
+                  : 'Complete KYC to unlock and start earning.'}
+              </Text>
+            </View>
+            <ChevronRight size={20} color={Colors.textInverse} />
+          </TouchableOpacity>
+        )}
 
         {/* Prominent KYC Section for Travelers */}
         {isTraveler && (
@@ -596,5 +640,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textTertiary,
     marginTop: 2,
+  },
+  becomeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.secondary,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+    gap: 14,
+  },
+  becomeIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  becomeContent: { flex: 1 },
+  becomeTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.textInverse,
+  },
+  becomeSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.82)',
+    marginTop: 2,
+    lineHeight: 16,
   },
 });

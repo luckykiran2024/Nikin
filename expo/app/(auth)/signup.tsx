@@ -24,7 +24,8 @@ import OTPVerification from '@/components/OTPVerification';
 export default function SignupScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ role?: string }>();
-  const role = (params.role as 'sender' | 'traveler') || 'sender';
+  const role: 'sender' = 'sender';
+  void params;
   const { signup } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -127,12 +128,7 @@ export default function SignupScreen() {
 
     try {
       await signup(name, `${countryCode}${phone}`, email, password, role as UserRole);
-      
-      if (role === 'traveler') {
-        router.replace('/kyc');
-      } else {
-        router.replace('/(tabs)');
-      }
+      router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Signup failed. Please try again.');
     } finally {
@@ -171,17 +167,8 @@ export default function SignupScreen() {
             <View style={styles.formContainer}>
               <Text style={styles.formTitle}>Create Account</Text>
               <Text style={styles.formSubtitle}>
-                {role === 'traveler' ? 'Sign up as a Traveler' : 'Sign up as a Sender'}
+                Start sending parcels. You can become a traveler anytime.
               </Text>
-
-              {role === 'traveler' && (
-                <View style={styles.kycNotice}>
-                  <AlertCircle size={18} color={Colors.warning} />
-                  <Text style={styles.kycNoticeText}>
-                    KYC verification is required for travelers
-                  </Text>
-                </View>
-              )}
 
               {error ? (
                 <View style={styles.errorContainer}>
@@ -303,9 +290,7 @@ export default function SignupScreen() {
                 {isLoading ? (
                   <ActivityIndicator color={Colors.textInverse} />
                 ) : (
-                  <Text style={styles.signupButtonText}>
-                    {role === 'traveler' ? 'Continue to KYC' : 'Create Account'}
-                  </Text>
+                  <Text style={styles.signupButtonText}>Create Account</Text>
                 )}
               </TouchableOpacity>
 

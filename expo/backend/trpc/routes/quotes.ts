@@ -126,6 +126,45 @@ export const quotesRouter = createTRPCRouter({
       return { success: true, quote: db.getQuoteById(input.id), conversationId: conversation.id, jobAcceptDeadline };
     }),
 
+  getBestMatches: publicProcedure
+    .input(z.object({ shipmentId: z.string(), limit: z.number().default(3) }))
+    .query(async ({ input }) => {
+      const shipment = db.getShipmentById(input.shipmentId);
+      if (!shipment) return [] as { quoteId: string; travelerId: string; travelerName: string; travelerRating: number; amount: number; score: number; reasons: string[] }[];
+      const quotes = db.getQuotesForShipment(input.shipmentId).filter(q => q.status === 'pending');
+      if (quotes.length === 0) return [];
+
+      const prices = quotes.map(q => q.amount);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const priceSpread = Math.max(1, maxPrice - minPrice);
+
+      const scored = quotes.map(q => {
+        const priceFit = 1 - (q.amount - minPrice) / priceSpread;
+        const ratingScore = (q.travelerRating || 5) / 5;
+        const deliveriesScore = Math.min(1, (q.travelerDeliveries || 0) / 20);
+        const routeOverlap = 0.7;
+        const score = routeOverlap * 0.4 + ratingScore * 0.3 + priceFit * 0.2 + deliveriesScore * 0.1;
+
+        const reasons: string[] = [];
+        if (q.amount === minPrice) reasons.push('Best Price');
+        if ((q.travelerRating || 0) >= 4.5) reasons.push('Top Rated');
+        if ((q.travelerDeliveries || 0) >= 10) reasons.push('Experienced');
+
+        return {
+          quoteId: q.id,
+          travelerId: q.travelerId,
+          travelerName: q.travelerName,
+          travelerRating: q.travelerRating,
+          amount: q.amount,
+          score: Math.round(score * 100) / 100,
+          reasons,
+        };
+      });
+
+      return scored.sort((a, b) => b.score - a.score).slice(0, input.limit);
+    }),
+
   reject: publicProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {

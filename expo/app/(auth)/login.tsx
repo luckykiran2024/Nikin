@@ -69,7 +69,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ role?: string }>();
   const role = (params.role as UserRole) || 'sender';
-  const config = roleConfig[role] || roleConfig.sender;
+  const config = roleConfig[role === 'traveler' ? 'sender' : role] || roleConfig.sender;
   const RoleIcon = config.icon;
 
   const { login, loginWithGoogle, isSupabaseEnabled } = useAuth();

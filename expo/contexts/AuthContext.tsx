@@ -34,6 +34,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const registerMutation = trpc.users.register.useMutation();
   const updateUserMutation = trpc.users.update.useMutation();
   const switchRoleMutation = trpc.users.switchRole.useMutation();
+  const becomeTravelerMutation = trpc.users.becomeTraveler.useMutation();
 
   useEffect(() => {
     loadUser();
@@ -460,6 +461,21 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   }, [SUPABASE_AUTH_ENABLED]);
 
+  const becomeTraveler = useCallback(async () => {
+    if (!user) throw new Error('Not authenticated');
+    if (user.kycStatus !== 'approved') {
+      throw new Error('Complete KYC verification first to become a traveler.');
+    }
+    const result = await becomeTravelerMutation.mutateAsync({ id: user.id });
+    if (result.success && result.user) {
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(result.user));
+      setUser(result.user);
+      setSelectedRole('traveler');
+      return result.user;
+    }
+    throw new Error(result.error || 'Failed to become traveler');
+  }, [user, becomeTravelerMutation]);
+
   const clearAuthError = useCallback(() => {
     setAuthError(null);
   }, []);
@@ -475,6 +491,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     signup,
     logout,
     switchRole,
+    becomeTraveler,
     updateKYCStatus,
     updateUser,
     verifyAadhaar,

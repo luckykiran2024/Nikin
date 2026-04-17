@@ -107,6 +107,25 @@ export const usersRouter = createTRPCRouter({
       return db.getAllUsers();
     }),
 
+  becomeTraveler: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const user = db.getUserById(input.id);
+      if (!user) return { success: false as const, error: 'User not found' };
+      if (user.kycStatus !== 'approved') {
+        return { success: false as const, error: 'KYC approval required to become a traveler' };
+      }
+      const roles = Array.from(new Set([...(user.roles || []), 'traveler' as const]));
+      const updated = db.updateUser(input.id, { roles, activeRole: 'traveler' });
+      return { success: true as const, user: updated };
+    }),
+
+  getRiskFlags: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ input }) => {
+      return db.computeRiskFlags(input.userId);
+    }),
+
   switchRole: publicProcedure
     .input(z.object({
       id: z.string(),
