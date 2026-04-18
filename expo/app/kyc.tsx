@@ -24,6 +24,13 @@ import {
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
+import {
+  isValidAadhaarChecksum,
+  isValidPAN,
+  sendAadhaarOTP,
+  verifyAadhaarOTP,
+  verifyKYC,
+} from '@/lib/kyc-provider';
 
 export default function KYCScreen() {
   const router = useRouter();
@@ -42,14 +49,16 @@ export default function KYCScreen() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const validateAadhaar = (num: string) => {
-    const cleaned = num.replace(/\s/g, '');
-    return /^\d{12}$/.test(cleaned);
-  };
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [otpRefId, setOtpRefId] = useState('');
+  const [expectedOtp, setExpectedOtp] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpAttempts, setOtpAttempts] = useState(0);
 
-  const validatePAN = (num: string) => {
-    return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(num.toUpperCase());
-  };
+  const validateAadhaar = (num: string) => isValidAadhaarChecksum(num);
+  const validatePAN = (num: string) => isValidPAN(num);
 
   const formatAadhaar = (text: string) => {
     const cleaned = text.replace(/\D/g, '').slice(0, 12);
@@ -96,6 +105,50 @@ export default function KYCScreen() {
     );
   };
 
+  const handleSendOTP = async () => {
+    if (!validateAadhaar(aadhaarNumber)) {
+      Alert.alert('Invalid Aadhaar', 'Please enter a valid 12-digit Aadhaar number (checksum failed)');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const res = await sendAadhaarOTP(aadhaarNumber);
+      if (!res.success) {
+        Alert.alert('OTP Failed', res.message);
+        return;
+      }
+      setOtpSent(true);
+      setOtpRefId(res.referenceId);
+      setExpectedOtp(res.otp ?? '');
+      setOtpAttempts(0);
+      Alert.alert('OTP Sent', res.message);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to send OTP');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    if (otpAttempts >= 5) {
+      Alert.alert('Locked', 'Too many attempts. Please resend OTP.');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const res = await verifyAadhaarOTP(otpRefId, otpInput, expectedOtp);
+      if (!res.success) {
+        setOtpAttempts((a) => a + 1);
+        Alert.alert('Verification Failed', res.message);
+        return;
+      }
+      setOtpVerified(true);
+      Alert.alert('Verified', 'Aadhaar OTP verified successfully');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateAadhaar(aadhaarNumber)) {
       Alert.alert('Invalid Aadhaar', 'Please enter a valid 12-digit Aadhaar number');
@@ -103,6 +156,10 @@ export default function KYCScreen() {
     }
     if (!validatePAN(panNumber)) {
       Alert.alert('Invalid PAN', 'Please enter a valid PAN number (e.g., ABCDE1234F)');
+      return;
+    }
+    if (!otpVerified) {
+      Alert.alert('OTP Required', 'Please verify Aadhaar via OTP before submitting');
       return;
     }
     if (!uploadedAadhaar || !uploadedPan) {
@@ -116,6 +173,20 @@ export default function KYCScreen() {
 
     setIsSubmitting(true);
     try {
+      const verification = await verifyKYC({
+        aadhaarNumber: aadhaarNumber.replace(/\s/g, ''),
+        panNumber: panNumber.toUpperCase(),
+        passportNumber: passportNumber || undefined,
+        drivingLicenseNumber: drivingLicenseNumber || undefined,
+        selfieUploaded: uploadedSelfie,
+        otpVerified,
+      });
+      console.log('[KYC] verification result', verification);
+      if (!verification.success) {
+        Alert.alert('Verification Failed', verification.message);
+        setIsSubmitting(false);
+        return;
+      }
       await submitKYCRequest({
         userId: user!.id,
         userName: user!.name,
@@ -130,6 +201,7 @@ export default function KYCScreen() {
         selfieUploaded: true,
       });
       await updateKYCStatus('pending');
+      console.log('[KYC] submitted with ref', verification.referenceId, 'score', verification.confidenceScore);
       setShowSuccessModal(true);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit KYC. Please try again.');
@@ -325,6 +397,69 @@ export default function KYCScreen() {
           </TouchableOpacity>
         </View>
 
+        {validateAadhaar(aadhaarNumber) && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Aadhaar OTP Verification</Text>
+              <Text style={otpVerified ? styles.optionalBadge : styles.requiredBadge}>
+                {otpVerified ? 'Verified' : 'Required'}
+              </Text>
+            </View>
+            {!otpSent ? (
+              <TouchableOpacity
+                style={[styles.uploadCard, otpLoading && styles.uploadCardDone]}
+                onPress={handleSendOTP}
+                disabled={otpLoading}
+              >
+                <Shield size={28} color={Colors.primary} />
+                <Text style={styles.uploadText}>
+                  {otpLoading ? 'Sending OTP...' : 'Send OTP to registered mobile'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter 6-digit OTP"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={otpInput}
+                    onChangeText={(t) => setOtpInput(t.replace(/\D/g, '').slice(0, 6))}
+                    keyboardType="numeric"
+                    maxLength={6}
+                    editable={!otpVerified}
+                  />
+                  {otpVerified && (
+                    <View style={styles.validationIcon}>
+                      <CheckCircle size={18} color={Colors.success} />
+                    </View>
+                  )}
+                </View>
+                {!otpVerified && (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.uploadCard, { flex: 1 }]}
+                      onPress={handleVerifyOTP}
+                      disabled={otpLoading || otpInput.length !== 6}
+                    >
+                      <Text style={styles.uploadText}>
+                        {otpLoading ? 'Verifying...' : 'Verify OTP'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.uploadCard, { flex: 1 }]}
+                      onPress={handleSendOTP}
+                      disabled={otpLoading}
+                    >
+                      <Text style={styles.uploadText}>Resend</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>PAN Card</Text>
@@ -455,10 +590,10 @@ export default function KYCScreen() {
         <TouchableOpacity
           style={[
             styles.submitButton,
-            (!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting) && styles.submitButtonDisabled,
+            (!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !otpVerified || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting) && styles.submitButtonDisabled,
           ]}
           onPress={handleSubmit}
-          disabled={!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting}
+          disabled={!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !otpVerified || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting}
         >
           <Text style={styles.submitButtonText}>
             {isSubmitting ? 'Submitting...' : 'Submit for Verification'}
