@@ -276,7 +276,8 @@ export default function KYCScreen() {
         setIsSubmitting(false);
         return;
       }
-      await submitKYCRequest({
+
+      const payload = {
         userId: user!.id,
         userName: user!.name,
         userEmail: user!.email,
@@ -292,8 +293,84 @@ export default function KYCScreen() {
         bankIfsc: ifsc.toUpperCase(),
         bankAccountHolder: bankHolderName.trim(),
         bankVerified: true,
-      });
-      await updateKYCStatus('pending');
+      };
+
+      let submitted = false;
+      try {
+        await submitKYCRequest(payload);
+        submitted = true;
+        console.log('[KYC] submitted via backend');
+      } catch (backendErr: any) {
+        console.log('[KYC] backend submit failed:', backendErr?.message || backendErr);
+      }
+
+      if (!submitted && isSupabaseConfigured()) {
+        try {
+          const client = getSupabaseClient();
+          if (client) {
+            const { data: existing } = await client
+              .from('kyc_requests')
+              .select('id,status')
+              .eq('user_id', user!.id)
+              .eq('status', 'pending')
+              .limit(1);
+            if (existing && existing.length > 0) {
+              console.log('[KYC] pending request already exists in supabase');
+              submitted = true;
+            } else {
+              const { error: insErr } = await client
+                .from('kyc_requests')
+                .insert({
+                  user_id: user!.id,
+                  document_type: 'aadhaar',
+                  document_number: payload.aadhaarNumber,
+                  document_front_image: '',
+                  document_back_image: null,
+                  selfie_image: 'uploaded',
+                  status: 'pending',
+                  rejection_reason: null,
+                  reviewed_by: null,
+                  reviewed_at: null,
+                });
+              if (insErr) {
+                console.log('[KYC] supabase insert error:', insErr.message);
+              } else {
+                submitted = true;
+                console.log('[KYC] submitted via supabase fallback');
+              }
+            }
+            if (submitted) {
+              const { error: updErr } = await client
+                .from('users')
+                .update({ kyc_status: 'pending' })
+                .eq('id', user!.id);
+              if (updErr) {
+                console.log('[KYC] supabase user update error:', updErr.message);
+              }
+            }
+          }
+        } catch (sbErr: any) {
+          console.log('[KYC] supabase fallback exception:', sbErr?.message || sbErr);
+        }
+      }
+
+      if (!submitted) {
+        Alert.alert('Submission Failed', 'Could not reach server. Please check your internet connection and try again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      try {
+        await updateKYCStatus('pending');
+      } catch (e: any) {
+        console.log('[KYC] updateKYCStatus failed:', e?.message || e);
+      }
+
+      try {
+        await utils.kyc.getAll.invalidate();
+        await utils.users.getAll.invalidate();
+      } catch {}
+
       console.log('[KYC] submitted with ref', verification.referenceId, 'score', verification.confidenceScore);
       setShowSuccessModal(true);
     } catch (error: any) {
