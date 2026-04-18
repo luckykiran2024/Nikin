@@ -26,6 +26,8 @@ import {
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
+import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase';
+import { trpc } from '@/lib/trpc';
 import {
   isValidAadhaarChecksum,
   isValidBankAccount,
@@ -42,6 +44,8 @@ export default function KYCScreen() {
   const router = useRouter();
   const { user, updateKYCStatus } = useAuth();
   const { submitKYCRequest, cancelKYCRequest } = useDataStore();
+  const utils = trpc.useUtils();
+  const [isCancelling, setIsCancelling] = useState<boolean>(false);
   
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [panNumber, setPanNumber] = useState('');
@@ -309,12 +313,67 @@ export default function KYCScreen() {
           text: 'Yes, Cancel',
           style: 'destructive',
           onPress: async () => {
+            if (!user?.id) {
+              Alert.alert('Error', 'User not found.');
+              return;
+            }
+            setIsCancelling(true);
+            let backendOk = false;
             try {
-              await cancelKYCRequest(user!.id);
+              await cancelKYCRequest(user.id);
+              backendOk = true;
+              console.log('[KYC cancel] backend succeeded');
+            } catch (err: any) {
+              console.log('[KYC cancel] backend failed:', err?.message || err);
+            }
+
+            if (!backendOk && isSupabaseConfigured()) {
+              try {
+                const client = getSupabaseClient();
+                if (client) {
+                  const { error: delErr } = await client
+                    .from('kyc_requests')
+                    .delete()
+                    .eq('user_id', user.id);
+                  if (delErr) {
+                    console.log('[KYC cancel] supabase delete error:', delErr.message);
+                  } else {
+                    console.log('[KYC cancel] supabase delete ok');
+                    backendOk = true;
+                  }
+                  const { error: updErr } = await client
+                    .from('users')
+                    .update({ kyc_status: 'not_submitted' })
+                    .eq('id', user.id);
+                  if (updErr) {
+                    console.log('[KYC cancel] supabase user update error:', updErr.message);
+                  }
+                }
+              } catch (sbErr: any) {
+                console.log('[KYC cancel] supabase fallback exception:', sbErr?.message || sbErr);
+              }
+            }
+
+            try {
               await updateKYCStatus('not_submitted');
+            } catch (e: any) {
+              console.log('[KYC cancel] updateKYCStatus failed:', e?.message || e);
+            }
+
+            try {
+              await utils.kyc.getAll.invalidate();
+              await utils.users.getAll.invalidate();
+            } catch {}
+
+            setIsCancelling(false);
+
+            if (backendOk) {
               Alert.alert('Cancelled', 'Your KYC request has been cancelled.');
-            } catch {
-              Alert.alert('Error', 'Failed to cancel KYC request.');
+            } else {
+              Alert.alert(
+                'Cancelled locally',
+                'Could not reach server, but your KYC has been reset on this device. You can submit a new request.'
+              );
             }
           },
         },
@@ -413,11 +472,14 @@ export default function KYCScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.cancelKycButton} 
+              style={[styles.cancelKycButton, isCancelling && { opacity: 0.6 }]} 
               onPress={handleCancelKYC}
+              disabled={isCancelling}
             >
               <X size={18} color={Colors.error} />
-              <Text style={styles.cancelKycButtonText}>Cancel KYC Request</Text>
+              <Text style={styles.cancelKycButtonText}>
+                {isCancelling ? 'Cancelling...' : 'Cancel KYC Request'}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
