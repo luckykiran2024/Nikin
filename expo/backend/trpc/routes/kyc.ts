@@ -134,35 +134,38 @@ export const kycRouter = createTRPCRouter({
     .mutation(async ({ input }) => {
       try {
         console.log('[kyc.cancel] input:', input);
-        let kyc: Awaited<ReturnType<typeof db.getKYCRequestById>> | undefined;
+
+        let targetUserId: string | undefined = input.userId;
+        let foundKycId: string | undefined;
+
         if (input.id) {
-          kyc = await Promise.resolve(db.getKYCRequestById(input.id));
-        } else if (input.userId) {
-          kyc = await Promise.resolve(db.getPendingKYCRequestByUserId(input.userId));
-          if (!kyc) {
-            kyc = await Promise.resolve(db.getKYCRequestByUserId(input.userId));
+          const kyc = await Promise.resolve(db.getKYCRequestById(input.id));
+          if (kyc) {
+            targetUserId = kyc.userId;
+            foundKycId = kyc.id;
+            try {
+              const deleted = await Promise.resolve(db.deleteKYCRequest(kyc.id));
+              console.log('[kyc.cancel] deleted by id:', deleted, 'id:', kyc.id);
+            } catch (delErr: any) {
+              console.log('[kyc.cancel] delete by id failed:', delErr?.message || delErr);
+            }
+          } else {
+            console.log('[kyc.cancel] no KYC found for id:', input.id);
           }
-        }
-
-        const targetUserId = kyc?.userId ?? input.userId;
-        console.log('[kyc.cancel] resolved targetUserId:', targetUserId, 'foundKyc:', !!kyc);
-
-        if (kyc) {
-          try {
-            const deleted = await Promise.resolve(db.deleteKYCRequest(kyc.id));
-            console.log('[kyc.cancel] deleted:', deleted, 'id:', kyc.id);
-          } catch (delErr) {
-            console.log('[kyc.cancel] delete failed, continuing:', delErr);
-          }
-        } else {
-          console.log('[kyc.cancel] no KYC record found, resetting user status only');
         }
 
         if (targetUserId) {
           try {
+            const count = await Promise.resolve(db.deleteKYCRequestsByUserId(targetUserId));
+            console.log('[kyc.cancel] deleted all KYC for user:', targetUserId, 'count:', count);
+          } catch (delAllErr: any) {
+            console.log('[kyc.cancel] deleteKYCRequestsByUserId failed:', delAllErr?.message || delAllErr);
+          }
+
+          try {
             await Promise.resolve(db.updateUser(targetUserId, { kycStatus: 'not_submitted' }));
-          } catch (updErr) {
-            console.log('[kyc.cancel] updateUser failed:', updErr);
+          } catch (updErr: any) {
+            console.log('[kyc.cancel] updateUser failed:', updErr?.message || updErr);
           }
 
           try {
@@ -171,11 +174,13 @@ export const kycRouter = createTRPCRouter({
               title: 'KYC Request Cancelled',
               message: 'Your pending KYC request has been cancelled. You can resubmit anytime.',
               type: 'kyc',
-              data: kyc ? { kycId: kyc.id } : {},
+              data: foundKycId ? { kycId: foundKycId } : {},
             }));
-          } catch (notifErr) {
-            console.log('[kyc.cancel] createNotification failed, continuing:', notifErr);
+          } catch (notifErr: any) {
+            console.log('[kyc.cancel] createNotification failed:', notifErr?.message || notifErr);
           }
+        } else {
+          console.log('[kyc.cancel] no targetUserId resolved');
         }
 
         return { success: true };

@@ -307,6 +307,18 @@ class InMemoryStore {
     return this.db.kycRequests.delete(id);
   }
 
+  deleteKYCRequestsByUserId(userId: string): number {
+    let count = 0;
+    for (const [id, kyc] of this.db.kycRequests.entries()) {
+      if (kyc.userId === userId) {
+        this.db.kycRequests.delete(id);
+        count++;
+      }
+    }
+    console.log('[DB] Deleted', count, 'KYC requests for user:', userId);
+    return count;
+  }
+
   // Chat Conversations
   createConversation(convData: Omit<ChatConversation, 'id' | 'createdAt' | 'updatedAt' | 'unreadCount' | 'isActive'>): ChatConversation {
     const id = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

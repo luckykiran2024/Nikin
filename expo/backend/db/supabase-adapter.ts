@@ -688,11 +688,14 @@ export class SupabaseAdapter {
       .select('*')
       .eq('user_id', userId)
       .order('submitted_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
     
-    if (error || !data) return undefined;
-    return this.transformKYCFromDb(data);
+    if (error) {
+      console.log('[SupabaseAdapter] getKYCRequestByUserId error:', error.message);
+      return undefined;
+    }
+    if (!data || data.length === 0) return undefined;
+    return this.transformKYCFromDb(data[0]);
   }
 
   async getPendingKYCRequestByUserId(userId: string): Promise<KYCRequest | undefined> {
@@ -701,10 +704,15 @@ export class SupabaseAdapter {
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'pending')
-      .single();
+      .order('submitted_at', { ascending: false })
+      .limit(1);
     
-    if (error || !data) return undefined;
-    return this.transformKYCFromDb(data);
+    if (error) {
+      console.log('[SupabaseAdapter] getPendingKYCRequestByUserId error:', error.message);
+      return undefined;
+    }
+    if (!data || data.length === 0) return undefined;
+    return this.transformKYCFromDb(data[0]);
   }
 
   async updateKYCRequest(id: string, updates: Partial<KYCRequest>): Promise<KYCRequest | undefined> {
@@ -751,7 +759,27 @@ export class SupabaseAdapter {
       .delete()
       .eq('id', id);
     
-    return !error;
+    if (error) {
+      console.log('[SupabaseAdapter] deleteKYCRequest error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async deleteKYCRequestsByUserId(userId: string): Promise<number> {
+    const { data, error } = await this.supabase
+      .from('kyc_requests')
+      .delete()
+      .eq('user_id', userId)
+      .select('id');
+    
+    if (error) {
+      console.log('[SupabaseAdapter] deleteKYCRequestsByUserId error:', error.message);
+      throw new Error(error.message);
+    }
+    const count = data?.length ?? 0;
+    console.log('[SupabaseAdapter] Deleted', count, 'KYC requests for user:', userId);
+    return count;
   }
 
   // Conversations

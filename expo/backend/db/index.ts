@@ -171,6 +171,13 @@ class UnifiedDatabase implements DatabaseInterface {
   getAllKYCRequests() { return this.db.getAllKYCRequests(); }
   getPendingKYCRequests() { return this.db.getPendingKYCRequests(); }
   deleteKYCRequest(id: string) { return this.db.deleteKYCRequest(id); }
+  deleteKYCRequestsByUserId(userId: string) {
+    const anyDb = this.db as any;
+    if (typeof anyDb.deleteKYCRequestsByUserId === 'function') {
+      return anyDb.deleteKYCRequestsByUserId(userId) as Promise<number> | number;
+    }
+    return 0;
+  }
 
   // Conversations
   createConversation(convData: Omit<ChatConversation, 'id' | 'createdAt' | 'updatedAt' | 'unreadCount' | 'isActive'>) { 
