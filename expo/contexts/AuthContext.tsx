@@ -76,7 +76,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     setAuthError(null);
     
     try {
-      if (emailOrPhone.toLowerCase() === 'admin@parcelpeer.com' && password === 'admin123') {
+      const trimmedId = emailOrPhone.trim().toLowerCase();
+      const trimmedPw = password.trim();
+      const isAdminCreds =
+        (trimmedId === 'admin@parcelpeer.com' || trimmedId === 'admin') &&
+        trimmedPw === 'admin123';
+      console.log('[Auth] Admin credential check:', { trimmedId, isAdminCreds, roleRequested: role });
+      if (isAdminCreds) {
         const adminUser: User = {
           id: 'admin_001',
           name: 'Admin User',
