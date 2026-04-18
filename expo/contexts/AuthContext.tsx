@@ -262,17 +262,35 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, [registerMutation]);
 
   const logout = useCallback(async () => {
-    console.log('[Auth] Logging out');
+    console.log('[Auth] Logging out and clearing local cache');
     try {
       if (SUPABASE_AUTH_ENABLED) {
         await supabaseSignOut();
-        await AsyncStorage.removeItem('auth_token');
       }
     } catch (error) {
       console.error('[Auth] Supabase signout error:', error);
     }
-    
-    await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      console.log('[Auth] Clearing AsyncStorage keys:', allKeys);
+      await AsyncStorage.multiRemove([
+        AUTH_STORAGE_KEY,
+        'auth_token',
+        'registered_users',
+        ...allKeys.filter((k) =>
+          k.startsWith('parcel_') ||
+          k.startsWith('kyc_') ||
+          k.startsWith('shipment') ||
+          k.startsWith('notification') ||
+          k.startsWith('trip') ||
+          k.startsWith('wallet')
+        ),
+      ]);
+    } catch (e) {
+      console.log('[Auth] Error clearing storage:', e);
+    }
+
     setUser(null);
     setIsAuthenticated(false);
     setSelectedRole('sender');
