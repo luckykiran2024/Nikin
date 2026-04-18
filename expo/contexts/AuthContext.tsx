@@ -371,7 +371,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const isAdmin = user?.activeRole === 'admin';
   const isTraveler = user?.activeRole === 'traveler';
   const isSender = user?.activeRole === 'sender';
-  const needsKYC = isTraveler && user?.kycStatus !== 'approved';
+  const needsKYC = (isTraveler || isSender) && user?.kycStatus !== 'approved';
   const needsAadhaarVerification = isSender && !user?.aadhaarVerified;
 
   const loginWithGoogle = useCallback(async (role?: UserRole) => {

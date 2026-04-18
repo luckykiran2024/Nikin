@@ -34,6 +34,8 @@ export default function CreateShipmentScreen() {
   const { user, needsAadhaarVerification, verifyAadhaar } = useAuth();
   const { createShipment } = useDataStore();
 
+  const kycApproved = user?.kycStatus === 'approved';
+
   const [showAadhaarModal, setShowAadhaarModal] = useState(false);
   const [aadhaarInput, setAadhaarInput] = useState('');
   const [isVerifyingAadhaar, setIsVerifyingAadhaar] = useState(false);
@@ -155,6 +157,18 @@ export default function CreateShipmentScreen() {
   const handleSubmit = async () => {
     if (!validateForm()) return;
     if (!user) return;
+
+    if (!kycApproved) {
+      Alert.alert(
+        'KYC Required',
+        'Complete full KYC (Aadhaar + PAN + Bank) to create a shipment.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Complete KYC', onPress: () => router.push('/kyc') },
+        ]
+      );
+      return;
+    }
     
     if (needsAadhaarVerification) {
       setShowAadhaarModal(true);
@@ -208,8 +222,25 @@ export default function CreateShipmentScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Aadhaar Verification Banner */}
-          {needsAadhaarVerification && (
+          {!kycApproved && (
+            <TouchableOpacity 
+              style={styles.aadhaarBanner}
+              onPress={() => router.push('/kyc')}
+            >
+              <Shield size={20} color={Colors.warning} />
+              <View style={styles.aadhaarBannerText}>
+                <Text style={styles.aadhaarBannerTitle}>KYC Required to Send</Text>
+                <Text style={styles.aadhaarBannerSubtitle}>
+                  {user?.kycStatus === 'pending'
+                    ? 'Your KYC is under review (24-48h). You\u2019ll be able to create shipments once approved.'
+                    : 'Verify Aadhaar, PAN & Bank account to unlock shipment creation.'}
+                </Text>
+              </View>
+              <ChevronRight size={20} color={Colors.warning} />
+            </TouchableOpacity>
+          )}
+
+          {kycApproved && needsAadhaarVerification && (
             <TouchableOpacity 
               style={styles.aadhaarBanner}
               onPress={() => setShowAadhaarModal(true)}
@@ -431,12 +462,12 @@ export default function CreateShipmentScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+            style={[styles.submitButton, (isLoading || !kycApproved) && styles.submitButtonDisabled]}
             onPress={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !kycApproved}
           >
             <Text style={styles.submitButtonText}>
-              {isLoading ? 'Creating...' : 'Create Shipment'}
+              {!kycApproved ? 'Complete KYC to Continue' : isLoading ? 'Creating...' : 'Create Shipment'}
             </Text>
           </TouchableOpacity>
         </ScrollView>

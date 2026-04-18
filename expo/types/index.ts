@@ -33,6 +33,11 @@ export interface User {
   earnings?: number;
   aadhaarVerified?: boolean;
   aadhaarNumber?: string;
+  panVerified?: boolean;
+  bankVerified?: boolean;
+  bankAccountNumber?: string;
+  bankIfsc?: string;
+  bankAccountHolder?: string;
 }
 
 export interface UserAddress {
@@ -249,6 +254,10 @@ export interface KYCRequest {
   passportNumber?: string;
   drivingLicenseNumber?: string;
   selfieUploaded: boolean;
+  bankAccountNumber?: string;
+  bankIfsc?: string;
+  bankAccountHolder?: string;
+  bankVerified?: boolean;
   submittedAt: string;
   status: 'pending' | 'approved' | 'rejected';
   reviewedAt?: string;

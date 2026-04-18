@@ -41,6 +41,67 @@ export function isValidPassport(passport: string): boolean {
   return /^[A-PR-WY][1-9]\d\s?\d{4}[1-9]$/.test(passport.toUpperCase());
 }
 
+export function isValidIFSC(ifsc: string): boolean {
+  return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase());
+}
+
+export function isValidBankAccount(acc: string): boolean {
+  const cleaned = acc.replace(/\s/g, '');
+  return /^\d{9,18}$/.test(cleaned);
+}
+
+export async function verifyBankAccount(
+  accountNumber: string,
+  ifsc: string,
+  accountHolder: string
+): Promise<{ success: boolean; message: string; referenceId: string; bankName?: string }> {
+  await delay(1200);
+  console.log('[KYC][mock] verifyBankAccount (penny drop)', ifsc, accountNumber.slice(-4));
+  if (!isValidBankAccount(accountNumber)) {
+    return { success: false, message: 'Invalid bank account number', referenceId: '' };
+  }
+  if (!isValidIFSC(ifsc)) {
+    return { success: false, message: 'Invalid IFSC code', referenceId: '' };
+  }
+  if (!accountHolder || accountHolder.trim().length < 2) {
+    return { success: false, message: 'Account holder name is required', referenceId: '' };
+  }
+  const bankCode = ifsc.slice(0, 4).toUpperCase();
+  const bankMap: Record<string, string> = {
+    HDFC: 'HDFC Bank',
+    ICIC: 'ICICI Bank',
+    SBIN: 'State Bank of India',
+    AXIS: 'Axis Bank',
+    KKBK: 'Kotak Mahindra Bank',
+    PUNB: 'Punjab National Bank',
+    UTIB: 'Axis Bank',
+    YESB: 'YES Bank',
+    IDFB: 'IDFC First Bank',
+    BARB: 'Bank of Baroda',
+  };
+  return {
+    success: true,
+    message: 'Bank account verified via penny-drop',
+    referenceId: generateRefId('BANK'),
+    bankName: bankMap[bankCode] ?? 'Verified Bank',
+  };
+}
+
+export async function verifyPAN(
+  pan: string,
+  nameOnPan: string
+): Promise<{ success: boolean; message: string; referenceId: string }> {
+  await delay(800);
+  console.log('[KYC][mock] verifyPAN', pan);
+  if (!isValidPAN(pan)) {
+    return { success: false, message: 'Invalid PAN format', referenceId: '' };
+  }
+  if (!nameOnPan || nameOnPan.trim().length < 2) {
+    return { success: false, message: 'Name on PAN is required', referenceId: '' };
+  }
+  return { success: true, message: 'PAN verified with NSDL', referenceId: generateRefId('PAN') };
+}
+
 export function isValidDrivingLicense(dl: string): boolean {
   const cleaned = dl.replace(/[\s-]/g, '').toUpperCase();
   return /^[A-Z]{2}\d{2}\s?\d{11}$/.test(cleaned) || cleaned.length >= 10;
@@ -69,6 +130,8 @@ export type KYCVerificationInput = {
   drivingLicenseNumber?: string;
   selfieUploaded: boolean;
   otpVerified?: boolean;
+  panVerified?: boolean;
+  bankVerified?: boolean;
 };
 
 export type KYCOTPResponse = {
@@ -137,14 +200,18 @@ export async function verifyKYC(input: KYCVerificationInput): Promise<KYCVerific
   const dlOk = input.drivingLicenseNumber ? isValidDrivingLicense(input.drivingLicenseNumber) : undefined;
   const selfieMatch = input.selfieUploaded && Math.random() > 0.02;
 
-  const required = aadhaarOk && panOk && selfieMatch && (input.otpVerified ?? true);
+  const bankOk = input.bankVerified ?? false;
+  const panDbOk = input.panVerified ?? false;
+  const required = aadhaarOk && panOk && selfieMatch && (input.otpVerified ?? true) && panDbOk && bankOk;
   const optionalValid = (passportOk ?? true) && (dlOk ?? true);
 
   const score =
-    (aadhaarOk ? 35 : 0) +
-    (panOk ? 30 : 0) +
-    (selfieMatch ? 25 : 0) +
-    (input.otpVerified ? 10 : 0);
+    (aadhaarOk ? 25 : 0) +
+    (panOk ? 15 : 0) +
+    (panDbOk ? 15 : 0) +
+    (selfieMatch ? 20 : 0) +
+    (input.otpVerified ? 10 : 0) +
+    (bankOk ? 15 : 0);
 
   const result: KYCVerificationResult = {
     success: required && optionalValid,
@@ -165,9 +232,13 @@ export async function verifyKYC(input: KYCVerificationInput): Promise<KYCVerific
           ? 'Aadhaar verification failed'
           : !panOk
             ? 'PAN verification failed'
-            : !selfieMatch
-              ? 'Selfie does not match document photo'
-              : 'Verification failed',
+            : !panDbOk
+              ? 'PAN database verification failed'
+              : !bankOk
+                ? 'Bank account verification failed'
+                : !selfieMatch
+                  ? 'Selfie does not match document photo'
+                  : 'Verification failed',
   };
 
   console.log('[KYC][mock] verifyKYC result', result);
@@ -180,7 +251,11 @@ export const KYC_PROVIDER = {
   isValidPAN,
   isValidPassport,
   isValidDrivingLicense,
+  isValidIFSC,
+  isValidBankAccount,
   sendAadhaarOTP,
   verifyAadhaarOTP,
   verifyKYC,
+  verifyPAN,
+  verifyBankAccount,
 } as const;

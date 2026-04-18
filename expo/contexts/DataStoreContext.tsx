@@ -397,6 +397,10 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
     passportNumber?: string;
     drivingLicenseNumber?: string;
     selfieUploaded: boolean;
+    bankAccountNumber?: string;
+    bankIfsc?: string;
+    bankAccountHolder?: string;
+    bankVerified?: boolean;
   }) => {
     const result = await submitKYCMutation.mutateAsync(kycData);
     if (result.success && result.kyc) {

@@ -20,16 +20,22 @@ import {
   Mail,
   AlertTriangle,
   X,
+  Landmark,
+  CreditCard,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataStore } from '@/contexts/DataStoreContext';
 import {
   isValidAadhaarChecksum,
+  isValidBankAccount,
+  isValidIFSC,
   isValidPAN,
   sendAadhaarOTP,
   verifyAadhaarOTP,
+  verifyBankAccount,
   verifyKYC,
+  verifyPAN,
 } from '@/lib/kyc-provider';
 
 export default function KYCScreen() {
@@ -56,6 +62,18 @@ export default function KYCScreen() {
   const [expectedOtp, setExpectedOtp] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpAttempts, setOtpAttempts] = useState(0);
+
+  const [nameOnPan, setNameOnPan] = useState('');
+  const [panVerifying, setPanVerifying] = useState(false);
+  const [panVerified, setPanVerified] = useState(false);
+
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountConfirm, setBankAccountConfirm] = useState('');
+  const [ifsc, setIfsc] = useState('');
+  const [bankHolderName, setBankHolderName] = useState('');
+  const [bankVerifying, setBankVerifying] = useState(false);
+  const [bankVerified, setBankVerified] = useState(false);
+  const [bankName, setBankName] = useState<string>('');
 
   const validateAadhaar = (num: string) => isValidAadhaarChecksum(num);
   const validatePAN = (num: string) => isValidPAN(num);
@@ -149,6 +167,63 @@ export default function KYCScreen() {
     }
   };
 
+  const handleVerifyPAN = async () => {
+    if (!validatePAN(panNumber)) {
+      Alert.alert('Invalid PAN', 'Please enter a valid PAN (ABCDE1234F)');
+      return;
+    }
+    if (!nameOnPan.trim()) {
+      Alert.alert('Name Required', 'Please enter name as on PAN card');
+      return;
+    }
+    setPanVerifying(true);
+    try {
+      const res = await verifyPAN(panNumber.toUpperCase(), nameOnPan.trim());
+      if (!res.success) {
+        Alert.alert('PAN Verification Failed', res.message);
+        return;
+      }
+      setPanVerified(true);
+      Alert.alert('Verified', 'PAN verified successfully');
+    } finally {
+      setPanVerifying(false);
+    }
+  };
+
+  const handleVerifyBank = async () => {
+    const cleanAcc = bankAccountNumber.replace(/\s/g, '');
+    const cleanConfirm = bankAccountConfirm.replace(/\s/g, '');
+    if (!isValidBankAccount(cleanAcc)) {
+      Alert.alert('Invalid Account', 'Account number must be 9-18 digits');
+      return;
+    }
+    if (cleanAcc !== cleanConfirm) {
+      Alert.alert('Mismatch', 'Account numbers do not match');
+      return;
+    }
+    if (!isValidIFSC(ifsc)) {
+      Alert.alert('Invalid IFSC', 'IFSC should be like HDFC0001234');
+      return;
+    }
+    if (!bankHolderName.trim()) {
+      Alert.alert('Name Required', 'Enter account holder name');
+      return;
+    }
+    setBankVerifying(true);
+    try {
+      const res = await verifyBankAccount(cleanAcc, ifsc.toUpperCase(), bankHolderName.trim());
+      if (!res.success) {
+        Alert.alert('Bank Verification Failed', res.message);
+        return;
+      }
+      setBankVerified(true);
+      setBankName(res.bankName ?? '');
+      Alert.alert('Verified', `Bank account verified (${res.bankName ?? 'Bank'})`);
+    } finally {
+      setBankVerifying(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateAadhaar(aadhaarNumber)) {
       Alert.alert('Invalid Aadhaar', 'Please enter a valid 12-digit Aadhaar number');
@@ -156,6 +231,14 @@ export default function KYCScreen() {
     }
     if (!validatePAN(panNumber)) {
       Alert.alert('Invalid PAN', 'Please enter a valid PAN number (e.g., ABCDE1234F)');
+      return;
+    }
+    if (!panVerified) {
+      Alert.alert('PAN Required', 'Please verify your PAN card before submitting');
+      return;
+    }
+    if (!bankVerified) {
+      Alert.alert('Bank Required', 'Please verify your bank account before submitting');
       return;
     }
     if (!otpVerified) {
@@ -180,6 +263,8 @@ export default function KYCScreen() {
         drivingLicenseNumber: drivingLicenseNumber || undefined,
         selfieUploaded: uploadedSelfie,
         otpVerified,
+        panVerified,
+        bankVerified,
       });
       console.log('[KYC] verification result', verification);
       if (!verification.success) {
@@ -199,6 +284,10 @@ export default function KYCScreen() {
         passportNumber: passportNumber || undefined,
         drivingLicenseNumber: drivingLicenseNumber || undefined,
         selfieUploaded: true,
+        bankAccountNumber: bankAccountNumber.replace(/\s/g, ''),
+        bankIfsc: ifsc.toUpperCase(),
+        bankAccountHolder: bankHolderName.trim(),
+        bankVerified: true,
       });
       await updateKYCStatus('pending');
       console.log('[KYC] submitted with ref', verification.referenceId, 'score', verification.confidenceScore);
@@ -498,6 +587,139 @@ export default function KYCScreen() {
               {uploadedPan ? 'PAN Uploaded' : 'Upload PAN Photo'}
             </Text>
           </TouchableOpacity>
+
+          <View style={{ marginTop: 12 }}>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Name as on PAN card"
+                placeholderTextColor={Colors.textTertiary}
+                value={nameOnPan}
+                onChangeText={setNameOnPan}
+                editable={!panVerified}
+                autoCapitalize="words"
+              />
+              {panVerified && (
+                <View style={styles.validationIcon}>
+                  <CheckCircle size={18} color={Colors.success} />
+                </View>
+              )}
+            </View>
+            {!panVerified ? (
+              <TouchableOpacity
+                style={[styles.uploadCard, panVerifying && styles.uploadCardDone]}
+                onPress={handleVerifyPAN}
+                disabled={panVerifying || !validatePAN(panNumber) || nameOnPan.trim().length < 2}
+              >
+                <CreditCard size={24} color={Colors.primary} />
+                <Text style={styles.uploadText}>
+                  {panVerifying ? 'Verifying with NSDL...' : 'Verify PAN'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.uploadCard, styles.uploadCardDone]}>
+                <CheckCircle size={24} color={Colors.success} />
+                <Text style={[styles.uploadText, { color: Colors.success }]}>PAN Verified with NSDL</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Bank Account</Text>
+            <Text style={bankVerified ? styles.optionalBadge : styles.requiredBadge}>
+              {bankVerified ? 'Verified' : 'Required'}
+            </Text>
+          </View>
+          <Text style={styles.bankNote}>
+            We verify via a ₹1 penny-drop. Payouts and refunds go to this account.
+          </Text>
+
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Account number"
+              placeholderTextColor={Colors.textTertiary}
+              value={bankAccountNumber}
+              onChangeText={(t) => setBankAccountNumber(t.replace(/\D/g, '').slice(0, 18))}
+              keyboardType="numeric"
+              editable={!bankVerified}
+              secureTextEntry
+            />
+          </View>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Re-enter account number"
+              placeholderTextColor={Colors.textTertiary}
+              value={bankAccountConfirm}
+              onChangeText={(t) => setBankAccountConfirm(t.replace(/\D/g, '').slice(0, 18))}
+              keyboardType="numeric"
+              editable={!bankVerified}
+            />
+            {bankAccountConfirm.length > 0 && bankAccountNumber.length > 0 && (
+              <View style={styles.validationIcon}>
+                {bankAccountConfirm === bankAccountNumber ? (
+                  <CheckCircle size={18} color={Colors.success} />
+                ) : (
+                  <AlertTriangle size={18} color={Colors.warning} />
+                )}
+              </View>
+            )}
+          </View>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="IFSC code (e.g., HDFC0001234)"
+              placeholderTextColor={Colors.textTertiary}
+              value={ifsc}
+              onChangeText={(t) => setIfsc(t.toUpperCase().slice(0, 11))}
+              autoCapitalize="characters"
+              maxLength={11}
+              editable={!bankVerified}
+            />
+            {ifsc.length > 0 && (
+              <View style={styles.validationIcon}>
+                {isValidIFSC(ifsc) ? (
+                  <CheckCircle size={18} color={Colors.success} />
+                ) : (
+                  <AlertTriangle size={18} color={Colors.warning} />
+                )}
+              </View>
+            )}
+          </View>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Account holder name"
+              placeholderTextColor={Colors.textTertiary}
+              value={bankHolderName}
+              onChangeText={setBankHolderName}
+              autoCapitalize="words"
+              editable={!bankVerified}
+            />
+          </View>
+
+          {!bankVerified ? (
+            <TouchableOpacity
+              style={[styles.uploadCard, bankVerifying && styles.uploadCardDone]}
+              onPress={handleVerifyBank}
+              disabled={bankVerifying}
+            >
+              <Landmark size={24} color={Colors.primary} />
+              <Text style={styles.uploadText}>
+                {bankVerifying ? 'Verifying via penny-drop...' : 'Verify Bank Account'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.uploadCard, styles.uploadCardDone]}>
+              <CheckCircle size={24} color={Colors.success} />
+              <Text style={[styles.uploadText, { color: Colors.success }]}>
+                {bankName ? `${bankName} verified` : 'Bank verified'}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -590,10 +812,10 @@ export default function KYCScreen() {
         <TouchableOpacity
           style={[
             styles.submitButton,
-            (!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !otpVerified || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting) && styles.submitButtonDisabled,
+            (!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !otpVerified || !panVerified || !bankVerified || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting) && styles.submitButtonDisabled,
           ]}
           onPress={handleSubmit}
-          disabled={!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !otpVerified || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting}
+          disabled={!validateAadhaar(aadhaarNumber) || !validatePAN(panNumber) || !otpVerified || !panVerified || !bankVerified || !uploadedAadhaar || !uploadedPan || !uploadedSelfie || isSubmitting}
         >
           <Text style={styles.submitButtonText}>
             {isSubmitting ? 'Submitting...' : 'Submit for Verification'}
@@ -948,6 +1170,12 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
     marginTop: 12,
+    lineHeight: 18,
+  },
+  bankNote: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 12,
     lineHeight: 18,
   },
 });

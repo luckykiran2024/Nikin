@@ -16,6 +16,10 @@ export const kycRouter = createTRPCRouter({
       passportNumber: z.string().optional(),
       drivingLicenseNumber: z.string().optional(),
       selfieUploaded: z.boolean(),
+      bankAccountNumber: z.string().optional(),
+      bankIfsc: z.string().optional(),
+      bankAccountHolder: z.string().optional(),
+      bankVerified: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const existingPending = db.getPendingKYCRequestByUserId(input.userId);
@@ -77,6 +81,11 @@ export const kycRouter = createTRPCRouter({
         kycStatus: 'approved',
         aadhaarVerified: true,
         aadhaarNumber: kyc.aadhaarNumber,
+        panVerified: true,
+        bankVerified: kyc.bankVerified ?? true,
+        bankAccountNumber: kyc.bankAccountNumber,
+        bankIfsc: kyc.bankIfsc,
+        bankAccountHolder: kyc.bankAccountHolder,
       });
 
       db.createNotification({

@@ -92,6 +92,13 @@ export const usersRouter = createTRPCRouter({
       totalDeliveries: z.number().optional(),
       totalShipments: z.number().optional(),
       rating: z.number().optional(),
+      aadhaarVerified: z.boolean().optional(),
+      aadhaarNumber: z.string().optional(),
+      panVerified: z.boolean().optional(),
+      bankVerified: z.boolean().optional(),
+      bankAccountNumber: z.string().optional(),
+      bankIfsc: z.string().optional(),
+      bankAccountHolder: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...updates } = input;

@@ -23,6 +23,7 @@ import {
   IdCard,
   CreditCard,
   User,
+  Landmark,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useDataStore } from '@/contexts/DataStoreContext';
@@ -246,6 +247,30 @@ export default function KYCRequestsScreen() {
                     <Text style={styles.documentLabel}>DL:</Text>
                     <Text style={styles.documentValue}>{request.drivingLicenseNumber}</Text>
                   </View>
+                )}
+                {request.bankAccountNumber && (
+                  <>
+                    <View style={styles.documentRow}>
+                      <Landmark size={16} color={Colors.textSecondary} />
+                      <Text style={styles.documentLabel}>Bank A/C:</Text>
+                      <Text style={styles.documentValue}>
+                        •••• {request.bankAccountNumber.slice(-4)}
+                        {request.bankVerified ? '  ✓' : ''}
+                      </Text>
+                    </View>
+                    {request.bankIfsc && (
+                      <View style={styles.documentRow}>
+                        <Text style={styles.documentLabel}>IFSC:</Text>
+                        <Text style={styles.documentValue}>{request.bankIfsc}</Text>
+                      </View>
+                    )}
+                    {request.bankAccountHolder && (
+                      <View style={styles.documentRow}>
+                        <Text style={styles.documentLabel}>Holder:</Text>
+                        <Text style={styles.documentValue}>{request.bankAccountHolder}</Text>
+                      </View>
+                    )}
+                  </>
                 )}
                 <View style={styles.documentRow}>
                   <Calendar size={16} color={Colors.textSecondary} />
