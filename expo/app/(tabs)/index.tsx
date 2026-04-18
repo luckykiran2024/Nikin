@@ -116,6 +116,16 @@ export default function HomeScreen() {
           >
             <Text style={styles.authButtonText}>Get Started</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            testID="admin-login-shortcut"
+            style={styles.adminShortcut}
+            onPress={() => router.push({ pathname: '/(auth)/login', params: { role: 'admin' } })}
+            activeOpacity={0.85}
+          >
+            <Shield size={14} color={Colors.textInverse} />
+            <Text style={styles.adminShortcutText}>Admin Login</Text>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
     );
@@ -605,6 +615,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.primary,
+  },
+  adminShortcut: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  adminShortcutText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: Colors.textInverse,
+    letterSpacing: 0.5,
   },
   header: {
     paddingTop: 60,
