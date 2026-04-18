@@ -2,6 +2,32 @@ import { z } from 'zod';
 import { createTRPCRouter, publicProcedure } from '../create-context';
 import { db } from '../../db/store';
 import { TRUST_LIMITS, ACTIVE_SHIPMENT_STATUSES, getCancellationStage, canRaiseDispute } from '@/constants/trustLimits';
+import { canTransition } from '../../db/stateMachine';
+import { auditLog, AuditActor } from '../../db/auditLog';
+import { PILOT_CONFIG, isPilotCity, isIntraCityAllowed } from '@/constants/pilotConfig';
+import type { Shipment, ShipmentStatus } from '@/types';
+
+function safeTransition(
+  shipment: Shipment,
+  nextStatus: ShipmentStatus,
+  actor: { id?: string; role: AuditActor; action: string; metadata?: Record<string, unknown> },
+): { ok: true } | { ok: false; error: string } {
+  if (!canTransition(shipment.status, nextStatus)) {
+    console.log('[StateMachine] blocked transition', shipment.id, shipment.status, '->', nextStatus);
+    return { ok: false, error: `Cannot move shipment from ${shipment.status} to ${nextStatus}` };
+  }
+  auditLog.record({
+    entityType: 'shipment',
+    entityId: shipment.id,
+    action: actor.action,
+    actorId: actor.id,
+    actorRole: actor.role,
+    fromState: shipment.status,
+    toState: nextStatus,
+    metadata: actor.metadata,
+  });
+  return { ok: true };
+}
 
 const parcelDetailsSchema = z.object({
   description: z.string(),
@@ -42,12 +68,27 @@ export const shipmentsRouter = createTRPCRouter({
       deliveryWindowEnd: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      // Sender trust limits
-      const parcelValue = input.parcelDetails.estimatedValue || 0;
-      if (parcelValue > TRUST_LIMITS.MAX_PARCEL_VALUE_INR) {
+      // Pilot geo-fence: intra-city only, only in allowed cities
+      if (PILOT_CONFIG.INTRA_CITY_ONLY && !isIntraCityAllowed(input.pickupCity, input.destinationCity)) {
         return {
           success: false as const,
-          error: `Parcel value exceeds the pilot limit of \u20B9${TRUST_LIMITS.MAX_PARCEL_VALUE_INR.toLocaleString('en-IN')}. For higher-value items please contact support.`,
+          error: `During the pilot we only support intra-city shipments. Pickup and destination city must match.`,
+        };
+      }
+      if (!isPilotCity(input.pickupCity) || !isPilotCity(input.destinationCity)) {
+        return {
+          success: false as const,
+          error: `The pilot is currently limited to: ${PILOT_CONFIG.ALLOWED_CITIES.join(', ')}.`,
+        };
+      }
+
+      // Sender trust limits (use the stricter of pilot cap vs. trust cap)
+      const parcelValue = input.parcelDetails.estimatedValue || 0;
+      const cap = Math.min(PILOT_CONFIG.MAX_PARCEL_VALUE_INR, TRUST_LIMITS.MAX_PARCEL_VALUE_INR);
+      if (parcelValue > cap) {
+        return {
+          success: false as const,
+          error: `Parcel value exceeds the pilot limit of \u20B9${cap.toLocaleString('en-IN')}. For higher-value items please contact support.`,
         };
       }
 
@@ -65,6 +106,16 @@ export const shipmentsRouter = createTRPCRouter({
       const shipment = db.createShipment({
         ...input,
         status: 'created',
+      });
+
+      auditLog.record({
+        entityType: 'shipment',
+        entityId: shipment.id,
+        action: 'create',
+        actorId: input.senderId,
+        actorRole: 'sender',
+        toState: 'created',
+        metadata: { parcelValue, pickupCity: input.pickupCity },
       });
 
       // Update sender risk flags silently
@@ -190,8 +241,21 @@ export const shipmentsRouter = createTRPCRouter({
       }
 
       if (shipment.pickupOtp !== input.otp) {
+        auditLog.record({
+          entityType: 'shipment',
+          entityId: shipment.id,
+          action: 'pickup_otp_failed',
+          actorRole: 'traveler',
+        });
         return { success: false, error: 'Invalid OTP' };
       }
+
+      const t = safeTransition(shipment, 'picked_up', {
+        id: shipment.assignedTravelerId,
+        role: 'traveler',
+        action: 'verify_pickup_otp',
+      });
+      if (!t.ok) return { success: false, error: t.error };
 
       const updated = db.updateShipment(input.id, {
         pickupOtpVerified: true,
@@ -224,8 +288,21 @@ export const shipmentsRouter = createTRPCRouter({
       }
 
       if (shipment.deliveryOtp !== input.otp) {
+        auditLog.record({
+          entityType: 'shipment',
+          entityId: shipment.id,
+          action: 'delivery_otp_failed',
+          actorRole: 'traveler',
+        });
         return { success: false, error: 'Invalid OTP' };
       }
+
+      const t = safeTransition(shipment, 'delivered', {
+        id: shipment.assignedTravelerId,
+        role: 'traveler',
+        action: 'verify_delivery_otp',
+      });
+      if (!t.ok) return { success: false, error: t.error };
 
       const updated = db.updateShipment(input.id, {
         deliveryOtpVerified: true,

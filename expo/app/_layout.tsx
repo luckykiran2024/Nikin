@@ -11,6 +11,9 @@ import { NetworkStatusBanner, useNetworkStatus } from "@/components/NetworkStatu
 import { LoadingScreen } from "@/components/LoadingScreen";
 import Colors from "@/constants/colors";
 import { trpc, trpcClient } from "@/lib/trpc";
+import { installGlobalErrorHandlers, errorTracker } from "@/utils/errorTracking";
+
+installGlobalErrorHandlers();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -152,6 +155,7 @@ function RootLayoutNav() {
 export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
+    errorTracker.setTag('app', 'parcelpeer');
   }, []);
 
   return (
