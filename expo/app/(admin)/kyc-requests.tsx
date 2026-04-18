@@ -24,13 +24,14 @@ import {
   CreditCard,
   User,
   Landmark,
+  Ban,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useDataStore } from '@/contexts/DataStoreContext';
 import { KYCRequest } from '@/types';
 
 export default function KYCRequestsScreen() {
-  const { kycRequests, approveKYCRequest, rejectKYCRequest } = useDataStore();
+  const { kycRequests, approveKYCRequest, rejectKYCRequest, cancelKYCRequest } = useDataStore();
   const [selectedTab, setSelectedTab] = useState<'pending' | 'all'>('pending');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -77,6 +78,29 @@ export default function KYCRequestsScreen() {
               Alert.alert('Success', `KYC approved for ${request.userName}. An email notification will be sent.`);
             } catch {
               Alert.alert('Error', 'Failed to approve KYC request');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancel = (request: KYCRequest) => {
+    Alert.alert(
+      'Cancel KYC Request',
+      `Cancel the pending KYC request for ${request.userName}? The user's status will be reset to 'not submitted' and they can resubmit anytime.`,
+      [
+        { text: 'Keep Request', style: 'cancel' },
+        {
+          text: 'Cancel Request',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelKYCRequest(request.userId);
+              await updateUserKYCStatus(request.userId, 'rejected');
+              Alert.alert('Cancelled', `KYC request for ${request.userName} has been cancelled.`);
+            } catch {
+              Alert.alert('Error', 'Failed to cancel KYC request');
             }
           },
         },
@@ -290,6 +314,14 @@ export default function KYCRequestsScreen() {
                   <TouchableOpacity style={styles.viewButton}>
                     <Eye size={18} color="#8B5CF6" />
                     <Text style={styles.viewButtonText}>View Documents</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => handleCancel(request)}
+                    testID={`cancel-kyc-${request.id}`}
+                  >
+                    <Ban size={18} color={Colors.textSecondary} />
+                    <Text style={styles.cancelButtonText}>Cancel Request</Text>
                   </TouchableOpacity>
                   <View style={styles.actionButtons}>
                     <TouchableOpacity
@@ -514,6 +546,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: '#8B5CF6',
+  },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceSecondary,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
   },
   actionButtons: {
     flexDirection: 'row',
