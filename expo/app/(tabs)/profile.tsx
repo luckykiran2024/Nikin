@@ -27,6 +27,7 @@ import {
   Trash2,
   Wallet,
   Plane,
+  FileText,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -346,6 +347,21 @@ export default function ProfileScreen() {
               <View style={styles.menuItemText}>
                 <Text style={styles.menuItemTitle}>Help & Support</Text>
                 <Text style={styles.menuItemSubtitle}>FAQs and contact support</Text>
+              </View>
+            </View>
+            <ChevronRight size={20} color={Colors.textTertiary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push('/legal' as any)}
+            testID="profile-legal"
+          >
+            <View style={styles.menuItemLeft}>
+              <FileText size={20} color={Colors.textSecondary} />
+              <View style={styles.menuItemText}>
+                <Text style={styles.menuItemTitle}>Legal & Policies</Text>
+                <Text style={styles.menuItemSubtitle}>Terms, Privacy, Refunds, Safety</Text>
               </View>
             </View>
             <ChevronRight size={20} color={Colors.textTertiary} />

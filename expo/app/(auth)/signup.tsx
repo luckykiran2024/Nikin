@@ -295,7 +295,21 @@ export default function SignupScreen() {
               </TouchableOpacity>
 
               <Text style={styles.termsText}>
-                By signing up, you agree to our Terms of Service and Privacy Policy
+                By signing up, you agree to our{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => router.push('/legal/terms' as any)}
+                >
+                  Terms of Service
+                </Text>{' '}
+                and{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => router.push('/legal/privacy' as any)}
+                >
+                  Privacy Policy
+                </Text>
+                .
               </Text>
             </View>
           </ScrollView>
@@ -527,6 +541,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
     lineHeight: 18,
+  },
+  termsLink: {
+    color: Colors.primary,
+    fontWeight: '600' as const,
   },
   modalOverlay: {
     flex: 1,

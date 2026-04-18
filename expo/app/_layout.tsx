@@ -147,6 +147,8 @@ function RootLayoutNav() {
           headerTintColor: Colors.textInverse,
         }} 
       />
+      <Stack.Screen name="legal/index" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/[id]" options={{ headerShown: false }} />
     </Stack>
     </View>
   );
