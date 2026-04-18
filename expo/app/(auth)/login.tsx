@@ -140,11 +140,15 @@ export default function LoginScreen() {
             testID="back-button"
             style={styles.backBtn}
             onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace('/(auth)/login');
+              try {
+                if (router.canGoBack?.()) {
+                  router.back();
+                  return;
+                }
+              } catch (e) {
+                console.log('canGoBack error', e);
               }
+              router.replace('/(auth)/login');
             }}
           >
             <ArrowLeft size={20} color={Colors.text} />
