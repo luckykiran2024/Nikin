@@ -19,6 +19,7 @@ import {
   CheckCircle,
   XCircle,
   MessageSquare,
+  Sparkles,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -207,6 +208,16 @@ export default function QuotationsScreen() {
                   <Text style={styles.detailValue}>{formatDate(group.shipment.preferredDate)}</Text>
                 </View>
               </View>
+
+              <TouchableOpacity
+                style={styles.bestMatchCta}
+                onPress={() => router.push(`/match/${group.shipment.id}` as any)}
+                testID={`best-matches-${group.shipment.id}`}
+              >
+                <Sparkles size={16} color={Colors.accent} />
+                <Text style={styles.bestMatchText}>View AI Best Matches</Text>
+                <ChevronRight size={16} color={Colors.accent} />
+              </TouchableOpacity>
 
               <View style={styles.quotesSection}>
                 <Text style={styles.quotesSectionTitle}>
@@ -588,5 +599,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: Colors.success,
+  },
+  bestMatchCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.secondary,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+  },
+  bestMatchText: {
+    color: Colors.textInverse,
+    fontWeight: '700' as const,
+    fontSize: 14,
   },
 });

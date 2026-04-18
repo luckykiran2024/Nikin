@@ -634,6 +634,17 @@ export default function ShipmentDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {(shipment.status === 'confirmed' || shipment.status === 'assigned' || shipment.status === 'payment_pending') && !shipment.pickupOtpVerified && (
+          <TouchableOpacity
+            style={styles.handoverButton}
+            onPress={() => router.push(`/handover/${shipment.id}` as any)}
+            testID="open-handover"
+          >
+            <Shield size={20} color={Colors.textInverse} />
+            <Text style={styles.handoverButtonText}>Open Secure Handover</Text>
+          </TouchableOpacity>
+        )}
+
         {shipment.chatId && (
           <TouchableOpacity 
             style={styles.chatButton}
@@ -735,6 +746,23 @@ export default function ShipmentDetailScreen() {
             </View>
           </View>
         </View>
+
+        {!isTraveler && quotes.length >= 2 && (shipment.status === 'created' || shipment.status === 'quoted') && (
+          <TouchableOpacity
+            style={styles.bestMatchBanner}
+            onPress={() => router.push(`/match/${shipment.id}` as any)}
+            testID="open-best-match"
+          >
+            <View style={styles.bestMatchIcon}>
+              <Zap size={18} color={Colors.textInverse} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bestMatchTitle}>AI Best Match available</Text>
+              <Text style={styles.bestMatchSubtitle}>See top-ranked travelers for this shipment</Text>
+            </View>
+            <Text style={styles.bestMatchCta}>View</Text>
+          </TouchableOpacity>
+        )}
 
         {!isTraveler && quotes.length > 0 && shipment.status !== 'assigned' && (
           <View style={styles.section}>
@@ -1570,6 +1598,53 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
     gap: 8,
+  },
+  handoverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.success,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    gap: 8,
+  },
+  handoverButtonText: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.textInverse,
+  },
+  bestMatchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    backgroundColor: Colors.secondary,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  bestMatchIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bestMatchTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: Colors.textInverse,
+  },
+  bestMatchSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  bestMatchCta: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: Colors.accent,
   },
   trackButtonText: {
     fontSize: 15,

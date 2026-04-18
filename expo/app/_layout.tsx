@@ -193,6 +193,22 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="match/[id]"
+        options={{
+          title: 'Best Matches',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+        }}
+      />
+      <Stack.Screen
+        name="handover/[id]"
+        options={{
+          title: 'Secure Handover',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+        }}
+      />
+      <Stack.Screen
         name="no-show/[shipmentId]"
         options={{
           title: 'No-Show / Delay',
