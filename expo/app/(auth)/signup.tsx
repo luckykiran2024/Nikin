@@ -152,7 +152,13 @@ export default function SignupScreen() {
           >
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => router.back()}
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(auth)/login');
+                }
+              }}
             >
               <ArrowLeft size={24} color={Colors.textInverse} />
             </TouchableOpacity>

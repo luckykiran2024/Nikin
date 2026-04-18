@@ -139,7 +139,13 @@ export default function LoginScreen() {
           <TouchableOpacity
             testID="back-button"
             style={styles.backBtn}
-            onPress={() => router.back()}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(auth)/login');
+              }
+            }}
           >
             <ArrowLeft size={20} color={Colors.text} />
           </TouchableOpacity>
