@@ -149,6 +149,58 @@ function RootLayoutNav() {
       />
       <Stack.Screen name="legal/index" options={{ headerShown: false }} />
       <Stack.Screen name="legal/[id]" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+        }}
+      />
+      <Stack.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+        }}
+      />
+      <Stack.Screen
+        name="become-traveler"
+        options={{
+          title: 'Become a Traveler',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="dispute/[shipmentId]"
+        options={{
+          title: 'Raise Dispute',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="review/[shipmentId]"
+        options={{
+          title: 'Rate & Review',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="no-show/[shipmentId]"
+        options={{
+          title: 'No-Show / Delay',
+          headerStyle: { backgroundColor: Colors.primary },
+          headerTintColor: Colors.textInverse,
+          presentation: 'modal',
+        }}
+      />
     </Stack>
     </View>
   );
