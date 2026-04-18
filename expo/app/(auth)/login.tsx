@@ -287,6 +287,14 @@ export default function LoginScreen() {
             <Text style={styles.testLabel}>DEMO CREDENTIALS</Text>
             <Text style={styles.testValue}>{config.testCredentials}</Text>
           </View>
+
+          <TouchableOpacity
+            testID="view-designs"
+            style={styles.designsBtn}
+            onPress={() => router.push('/designs' as any)}
+          >
+            <Text style={styles.designsText}>View Hi-Fi Designs →</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -294,6 +302,20 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  designsBtn: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+  },
+  designsText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
   safe: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
   scrollContent: {

@@ -209,6 +209,10 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="designs"
+        options={{ headerShown: false, presentation: 'modal' }}
+      />
+      <Stack.Screen
         name="no-show/[shipmentId]"
         options={{
           title: 'No-Show / Delay',
