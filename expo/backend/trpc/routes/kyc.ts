@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createTRPCRouter, publicProcedure } from '../create-context';
-import { db } from '../../db/store';
+import { database as db } from '../../db';
 
 export const kycRouter = createTRPCRouter({
   submit: publicProcedure
@@ -132,38 +132,56 @@ export const kycRouter = createTRPCRouter({
   cancel: publicProcedure
     .input(z.object({ userId: z.string().optional(), id: z.string().optional() }).refine(v => v.userId || v.id, { message: 'userId or id required' }))
     .mutation(async ({ input }) => {
-      console.log('[kyc.cancel] input:', input);
-      let kyc = undefined as Awaited<ReturnType<typeof db.getKYCRequestById>> | undefined;
-      if (input.id) {
-        kyc = await Promise.resolve(db.getKYCRequestById(input.id));
-      } else if (input.userId) {
-        kyc = await Promise.resolve(db.getPendingKYCRequestByUserId(input.userId));
-        if (!kyc) {
-          kyc = await Promise.resolve(db.getKYCRequestByUserId(input.userId));
+      try {
+        console.log('[kyc.cancel] input:', input);
+        let kyc: Awaited<ReturnType<typeof db.getKYCRequestById>> | undefined;
+        if (input.id) {
+          kyc = await Promise.resolve(db.getKYCRequestById(input.id));
+        } else if (input.userId) {
+          kyc = await Promise.resolve(db.getPendingKYCRequestByUserId(input.userId));
+          if (!kyc) {
+            kyc = await Promise.resolve(db.getKYCRequestByUserId(input.userId));
+          }
         }
+
+        const targetUserId = kyc?.userId ?? input.userId;
+        console.log('[kyc.cancel] resolved targetUserId:', targetUserId, 'foundKyc:', !!kyc);
+
+        if (kyc) {
+          try {
+            const deleted = await Promise.resolve(db.deleteKYCRequest(kyc.id));
+            console.log('[kyc.cancel] deleted:', deleted, 'id:', kyc.id);
+          } catch (delErr) {
+            console.log('[kyc.cancel] delete failed, continuing:', delErr);
+          }
+        } else {
+          console.log('[kyc.cancel] no KYC record found, resetting user status only');
+        }
+
+        if (targetUserId) {
+          try {
+            await Promise.resolve(db.updateUser(targetUserId, { kycStatus: 'not_submitted' }));
+          } catch (updErr) {
+            console.log('[kyc.cancel] updateUser failed:', updErr);
+          }
+
+          try {
+            await Promise.resolve(db.createNotification({
+              userId: targetUserId,
+              title: 'KYC Request Cancelled',
+              message: 'Your pending KYC request has been cancelled. You can resubmit anytime.',
+              type: 'kyc',
+              data: kyc ? { kycId: kyc.id } : {},
+            }));
+          } catch (notifErr) {
+            console.log('[kyc.cancel] createNotification failed, continuing:', notifErr);
+          }
+        }
+
+        return { success: true };
+      } catch (err: any) {
+        console.log('[kyc.cancel] unexpected error:', err?.message || err);
+        return { success: false, error: err?.message || 'Failed to cancel KYC request' };
       }
-
-      const targetUserId = kyc?.userId ?? input.userId;
-
-      if (kyc) {
-        const deleted = await Promise.resolve(db.deleteKYCRequest(kyc.id));
-        console.log('[kyc.cancel] deleted:', deleted, 'id:', kyc.id);
-      } else {
-        console.log('[kyc.cancel] no KYC record found, resetting user status only');
-      }
-
-      if (targetUserId) {
-        await Promise.resolve(db.updateUser(targetUserId, { kycStatus: 'not_submitted' }));
-
-        await Promise.resolve(db.createNotification({
-          userId: targetUserId,
-          title: 'KYC Request Cancelled',
-          message: 'Your pending KYC request has been cancelled. You can resubmit anytime.',
-          type: 'kyc',
-          data: kyc ? { kycId: kyc.id } : {},
-        }));
-      }
-
-      return { success: true };
     }),
 });
