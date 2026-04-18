@@ -96,11 +96,12 @@ export default function KYCRequestsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await cancelKYCRequest(request.userId);
+              await cancelKYCRequest(request.id, true);
               await updateUserKYCStatus(request.userId, 'rejected');
               Alert.alert('Cancelled', `KYC request for ${request.userName} has been cancelled.`);
-            } catch {
-              Alert.alert('Error', 'Failed to cancel KYC request');
+            } catch (err: any) {
+              console.log('[admin] cancel kyc error:', err);
+              Alert.alert('Error', err?.message || 'Failed to cancel KYC request');
             }
           },
         },

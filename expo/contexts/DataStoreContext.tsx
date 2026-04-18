@@ -410,9 +410,13 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
     throw new Error(result.error || 'Failed to submit KYC');
   }, [submitKYCMutation]);
 
-  const cancelKYCRequest = useCallback(async (userId: string) => {
-    await cancelKYCMutation.mutateAsync({ userId });
-    console.log('KYC cancelled for user:', userId);
+  const cancelKYCRequest = useCallback(async (userIdOrKycId: string, byId?: boolean) => {
+    const payload = byId ? { id: userIdOrKycId } : { userId: userIdOrKycId };
+    const result = await cancelKYCMutation.mutateAsync(payload);
+    if (!result?.success) {
+      throw new Error(result?.error || 'Failed to cancel KYC request');
+    }
+    console.log('KYC cancelled:', payload);
   }, [cancelKYCMutation]);
 
   const approveKYCRequest = useCallback(async (kycId: string) => {
