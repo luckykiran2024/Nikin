@@ -138,24 +138,31 @@ export const kycRouter = createTRPCRouter({
         kyc = await Promise.resolve(db.getKYCRequestById(input.id));
       } else if (input.userId) {
         kyc = await Promise.resolve(db.getPendingKYCRequestByUserId(input.userId));
+        if (!kyc) {
+          kyc = await Promise.resolve(db.getKYCRequestByUserId(input.userId));
+        }
       }
-      if (!kyc) {
-        console.log('[kyc.cancel] no pending request found');
-        return { success: false, error: 'No pending KYC request found' };
+
+      const targetUserId = kyc?.userId ?? input.userId;
+
+      if (kyc) {
+        const deleted = await Promise.resolve(db.deleteKYCRequest(kyc.id));
+        console.log('[kyc.cancel] deleted:', deleted, 'id:', kyc.id);
+      } else {
+        console.log('[kyc.cancel] no KYC record found, resetting user status only');
       }
 
-      const deleted = await Promise.resolve(db.deleteKYCRequest(kyc.id));
-      console.log('[kyc.cancel] deleted:', deleted, 'id:', kyc.id);
+      if (targetUserId) {
+        await Promise.resolve(db.updateUser(targetUserId, { kycStatus: 'not_submitted' }));
 
-      await Promise.resolve(db.updateUser(kyc.userId, { kycStatus: 'not_submitted' }));
-
-      await Promise.resolve(db.createNotification({
-        userId: kyc.userId,
-        title: 'KYC Request Cancelled',
-        message: 'Your pending KYC request has been cancelled. You can resubmit anytime.',
-        type: 'kyc',
-        data: { kycId: kyc.id },
-      }));
+        await Promise.resolve(db.createNotification({
+          userId: targetUserId,
+          title: 'KYC Request Cancelled',
+          message: 'Your pending KYC request has been cancelled. You can resubmit anytime.',
+          type: 'kyc',
+          data: kyc ? { kycId: kyc.id } : {},
+        }));
+      }
 
       return { success: true };
     }),
