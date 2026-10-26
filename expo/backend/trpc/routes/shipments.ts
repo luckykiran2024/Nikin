@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure } from '../create-context';
 import { db } from '../../db/store';
 import { TRUST_LIMITS, ACTIVE_SHIPMENT_STATUSES, getCancellationStage, canRaiseDispute } from '@/constants/trustLimits';
 import { canTransition } from '../../db/stateMachine';
@@ -45,7 +45,7 @@ const geoCoordinatesSchema = z.object({
 });
 
 export const shipmentsRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(z.object({
       senderId: z.string(),
       senderName: z.string(),
@@ -67,7 +67,8 @@ export const shipmentsRouter = createTRPCRouter({
       deliveryWindowStart: z.string().optional(),
       deliveryWindowEnd: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (input.senderId !== ctx.user.id) return { success: false as const, error: 'Sender does not match authenticated user' };
       // Pilot geo-fence: intra-city only, only in allowed cities
       if (PILOT_CONFIG.INTRA_CITY_ONLY && !isIntraCityAllowed(input.pickupCity, input.destinationCity)) {
         return {
@@ -132,32 +133,32 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
       return db.getShipmentById(input.id) || null;
     }),
 
-  getByParcelRequestId: publicProcedure
+  getByParcelRequestId: protectedProcedure
     .input(z.object({ parcelRequestId: z.string() }))
     .query(async ({ input }) => {
       const shipments = db.getAllShipments();
       return shipments.find(s => s.parcelRequestId === input.parcelRequestId) || null;
     }),
 
-  getBySenderId: publicProcedure
+  getBySenderId: protectedProcedure
     .input(z.object({ senderId: z.string() }))
     .query(async ({ input }) => {
       return db.getShipmentsBySenderId(input.senderId);
     }),
 
-  getByTravelerId: publicProcedure
+  getByTravelerId: protectedProcedure
     .input(z.object({ travelerId: z.string() }))
     .query(async ({ input }) => {
       return db.getShipmentsByTravelerId(input.travelerId);
     }),
 
-  getAvailable: publicProcedure
+  getAvailable: protectedProcedure
     .input(z.object({
       fromCity: z.string().optional(),
       toCity: z.string().optional(),
@@ -166,12 +167,12 @@ export const shipmentsRouter = createTRPCRouter({
       return db.getAvailableShipments(input?.fromCity, input?.toCity);
     }),
 
-  getAll: publicProcedure
+  getAll: protectedProcedure
     .query(async () => {
       return db.getAllShipments();
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(z.object({
       id: z.string(),
       status: z.enum(['created', 'quoted', 'pending_acceptance', 'assigned', 'payment_pending', 'confirmed', 'pickup_delayed', 'no_show', 'picked_up', 'in_transit', 'out_for_delivery', 'delivery_attempted', 'delivered', 'returning', 'returned', 'completed', 'cancelled']).optional(),
@@ -193,8 +194,21 @@ export const shipmentsRouter = createTRPCRouter({
       travelerParcelImage: z.string().optional(),
       pickupDetailsCompleted: z.boolean().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...updates } = input;
+      const current = db.getShipmentById(id);
+      if (!current || current.assignedTravelerId !== ctx.user.id) {
+        return { success: false, error: 'Only the assigned traveler can update pickup details' };
+      }
+      const forbidden = ['assignedTravelerId', 'assignedTravelerName', 'assignedTravelerPhone',
+        'acceptedQuoteAmount', 'pickupOtpVerified', 'deliveryOtpVerified', 'paymentStatus',
+        'paymentMethod', 'paymentCompleted', 'chatId'];
+      if (forbidden.some(field => field in updates) ||
+          (updates.status && (updates.status !== 'assigned' && updates.status !== 'in_transit')) ||
+          (updates.status === 'in_transit' && !canTransition(current.status, 'in_transit')) ||
+          (updates.status === 'assigned' && current.status !== 'assigned')) {
+        return { success: false, error: 'Use the verified workflow for this change' };
+      }
       const shipment = db.updateShipment(id, updates);
       if (!shipment) {
         return { success: false, error: 'Shipment not found' };
@@ -202,7 +216,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment };
     }),
 
-  updateLocation: publicProcedure
+  updateLocation: protectedProcedure
     .input(z.object({
       id: z.string(),
       coords: geoCoordinatesSchema,
@@ -229,7 +243,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment: updated };
     }),
 
-  verifyPickupOTP: publicProcedure
+  verifyPickupOTP: protectedProcedure
     .input(z.object({
       id: z.string(),
       otp: z.string(),
@@ -275,7 +289,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment: updated };
     }),
 
-  verifyDeliveryOTP: publicProcedure
+  verifyDeliveryOTP: protectedProcedure
     .input(z.object({
       id: z.string(),
       otp: z.string(),
@@ -322,29 +336,11 @@ export const shipmentsRouter = createTRPCRouter({
       }
 
       if (shipment.assignedTravelerId) {
-        const payment = db.getPaymentByShipmentId(shipment.id);
-        if (payment) {
-          db.updatePayment(payment.id, {
-            status: 'completed',
-            completedAt: new Date().toISOString(),
-            releasedAt: new Date().toISOString(),
-            escrowHeld: false,
-          });
-
-          const traveler = db.getUserById(shipment.assignedTravelerId);
-          if (traveler) {
-            db.updateUser(shipment.assignedTravelerId, {
-              earnings: (traveler.earnings || 0) + payment.travelerAmount,
-              totalDeliveries: (traveler.totalDeliveries || 0) + 1,
-            });
-          }
-        }
-
         db.createNotification({
           userId: shipment.assignedTravelerId,
           title: 'Delivery Completed',
-          message: `Payment for ${shipment.parcelRequestId} has been released to your account.`,
-          type: 'payment',
+          message: `Delivery of ${shipment.parcelRequestId} has been recorded. Payout is subject to payment reconciliation.`,
+          type: 'shipment',
           data: { shipmentId: shipment.id },
         });
       }
@@ -352,7 +348,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment: updated };
     }),
 
-  markInTransit: publicProcedure
+  markInTransit: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.updateShipment(input.id, { status: 'in_transit' });
@@ -373,7 +369,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment };
     }),
 
-  markOutForDelivery: publicProcedure
+  markOutForDelivery: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -406,7 +402,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment: updated, deliveryOtp: newDeliveryOtp };
     }),
 
-  markCompleted: publicProcedure
+  markCompleted: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.updateShipment(input.id, { status: 'completed' });
@@ -424,12 +420,12 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true, shipment };
     }),
 
-  acceptJob: publicProcedure
+  acceptJob: protectedProcedure
     .input(z.object({ id: z.string(), travelerId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const shipment = db.getShipmentById(input.id);
       if (!shipment) return { success: false as const, error: 'Shipment not found' };
-      if (shipment.assignedTravelerId !== input.travelerId) {
+      if (ctx.user.id !== input.travelerId || shipment.assignedTravelerId !== input.travelerId) {
         return { success: false as const, error: 'Only the assigned traveler can accept this job' };
       }
       if (shipment.status !== 'pending_acceptance') {
@@ -455,12 +451,12 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  declineJob: publicProcedure
+  declineJob: protectedProcedure
     .input(z.object({ id: z.string(), travelerId: z.string(), reason: z.string().optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const shipment = db.getShipmentById(input.id);
       if (!shipment) return { success: false as const, error: 'Shipment not found' };
-      if (shipment.assignedTravelerId !== input.travelerId) {
+      if (ctx.user.id !== input.travelerId || shipment.assignedTravelerId !== input.travelerId) {
         return { success: false as const, error: 'Only the assigned traveler can decline this job' };
       }
       if (shipment.status !== 'pending_acceptance' && shipment.status !== 'assigned') {
@@ -496,7 +492,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  autoCancelExpiredAcceptance: publicProcedure
+  autoCancelExpiredAcceptance: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -545,7 +541,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  cancel: publicProcedure
+  cancel: protectedProcedure
     .input(z.object({
       id: z.string(),
       userId: z.string(),
@@ -606,7 +602,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated, stage };
     }),
 
-  markNoShow: publicProcedure
+  markNoShow: protectedProcedure
     .input(z.object({ id: z.string(), userId: z.string(), note: z.string().optional() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -635,7 +631,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  requestReassignment: publicProcedure
+  requestReassignment: protectedProcedure
     .input(z.object({ id: z.string(), userId: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -669,7 +665,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  checkPickupDelay: publicProcedure
+  checkPickupDelay: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -694,7 +690,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  markDeliveryAttempted: publicProcedure
+  markDeliveryAttempted: protectedProcedure
     .input(z.object({ id: z.string(), travelerId: z.string(), reason: z.string().optional() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -723,7 +719,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  rescheduleDelivery: publicProcedure
+  rescheduleDelivery: protectedProcedure
     .input(z.object({ id: z.string(), newDate: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -738,7 +734,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  startReturn: publicProcedure
+  startReturn: protectedProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -763,7 +759,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  confirmReturned: publicProcedure
+  confirmReturned: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const shipment = db.getShipmentById(input.id);
@@ -778,7 +774,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, shipment: updated };
     }),
 
-  raiseDispute: publicProcedure
+  raiseDispute: protectedProcedure
     .input(z.object({
       id: z.string(),
       userId: z.string(),
@@ -818,7 +814,7 @@ export const shipmentsRouter = createTRPCRouter({
       return { success: true as const, dispute };
     }),
 
-  rateShipment: publicProcedure
+  rateShipment: protectedProcedure
     .input(z.object({
       id: z.string(),
       userId: z.string(),

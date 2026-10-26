@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure, adminProcedure } from '../create-context';
 import { db } from '../../db/store';
 
 const RAZORPAY_KEY_ID = process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || '';
@@ -67,7 +67,7 @@ async function verifyRazorpaySignature(orderId: string, paymentId: string, signa
 }
 
 export const paymentsRouter = createTRPCRouter({
-  createOrder: publicProcedure
+  createOrder: protectedProcedure
     .input(z.object({
       shipmentId: z.string(),
       senderId: z.string(),
@@ -77,19 +77,28 @@ export const paymentsRouter = createTRPCRouter({
       travelerAmount: z.number(),
       method: paymentMethodEnum,
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const shipment = db.getShipmentById(input.shipmentId);
+      if (!shipment || shipment.senderId !== ctx.user.id || shipment.senderId !== input.senderId ||
+          shipment.assignedTravelerId !== input.travelerId || shipment.status !== 'assigned' ||
+          !shipment.acceptedQuoteAmount || input.method === 'cod') {
+        return { success: false as const, error: 'Invalid shipment or payment method' };
+      }
+      const amount = shipment.acceptedQuoteAmount;
+      const platformFee = Math.round(amount * 0.2);
+      const travelerAmount = amount - platformFee;
       const existingPayment = db.getPaymentByShipmentId(input.shipmentId);
       if (existingPayment && existingPayment.status === 'completed') {
         return { success: false, error: 'Payment already completed for this shipment' as const };
       }
 
-      if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-        return { success: false, error: 'Razorpay is not configured on the server' as const };
+      if (!RAZORPAY_KEY_ID.startsWith('rzp_test_') || !RAZORPAY_KEY_SECRET) {
+        return { success: false, error: 'Only Razorpay test orders are available until the payment ledger is persistent' as const };
       }
 
       try {
         const order = await createRazorpayOrder(
-          Math.round(input.amount * 100),
+          Math.round(amount * 100),
           `sh_${input.shipmentId}`.slice(0, 40),
           { shipmentId: input.shipmentId, senderId: input.senderId, method: input.method },
         );
@@ -104,9 +113,9 @@ export const paymentsRouter = createTRPCRouter({
               shipmentId: input.shipmentId,
               senderId: input.senderId,
               travelerId: input.travelerId,
-              amount: input.amount,
-              platformFee: input.platformFee,
-              travelerAmount: input.travelerAmount,
+              amount,
+              platformFee,
+              travelerAmount,
               method: input.method,
               status: 'pending',
               escrowHeld: false,
@@ -125,16 +134,16 @@ export const paymentsRouter = createTRPCRouter({
       }
     }),
 
-  verifyPayment: publicProcedure
+  verifyPayment: protectedProcedure
     .input(z.object({
       paymentId: z.string(),
       razorpayOrderId: z.string(),
       razorpayPaymentId: z.string(),
       razorpaySignature: z.string(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const payment = db.getPaymentById(input.paymentId);
-      if (!payment) return { success: false, error: 'Payment not found' };
+      if (!payment || payment.senderId !== ctx.user.id || payment.razorpayOrderId !== input.razorpayOrderId || payment.status !== 'pending') return { success: false, error: 'Invalid payment' };
 
       const valid = await verifyRazorpaySignature(
         input.razorpayOrderId,
@@ -148,7 +157,7 @@ export const paymentsRouter = createTRPCRouter({
 
       const updatedPayment = db.updatePayment(payment.id, {
         status: 'completed',
-        escrowHeld: false,
+        escrowHeld: true,
         completedAt: new Date().toISOString(),
         razorpayPaymentId: input.razorpayPaymentId,
         razorpaySignature: input.razorpaySignature,
@@ -159,16 +168,9 @@ export const paymentsRouter = createTRPCRouter({
         db.updateShipment(payment.shipmentId, {
           status: 'confirmed',
           paymentMethod: payment.method,
-          paymentStatus: 'released',
+          paymentStatus: 'held',
           paymentCompleted: true,
         });
-
-        const traveler = db.getUserById(payment.travelerId);
-        if (traveler) {
-          db.updateUser(payment.travelerId, {
-            earnings: (traveler.earnings || 0) + payment.travelerAmount,
-          });
-        }
 
         db.createNotification({
           userId: payment.senderId,
@@ -189,71 +191,52 @@ export const paymentsRouter = createTRPCRouter({
       return { success: true as const, payment: updatedPayment };
     }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(z.object({
-      shipmentId: z.string(),
-      senderId: z.string(),
-      travelerId: z.string(),
-      amount: z.number(),
-      platformFee: z.number(),
-      travelerAmount: z.number(),
-      method: paymentMethodEnum,
-      status: z.enum(['pending', 'completed', 'failed', 'refunded']).optional(),
+      shipmentId: z.string(), senderId: z.string(), travelerId: z.string(),
+      amount: z.number(), platformFee: z.number(), travelerAmount: z.number(),
+      method: paymentMethodEnum, status: z.enum(['pending', 'completed', 'failed', 'refunded']).optional(),
       escrowHeld: z.boolean().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const existing = db.getPaymentByShipmentId(input.shipmentId);
-      if (existing && existing.status === 'completed') {
-        return { success: false, error: 'Payment already completed for this shipment' };
+    .mutation(({ input, ctx }) => {
+      const shipment = db.getShipmentById(input.shipmentId);
+      if (input.method !== 'cod' || input.status && input.status !== 'pending' ||
+          !shipment || shipment.senderId !== ctx.user.id || shipment.senderId !== input.senderId ||
+          shipment.assignedTravelerId !== input.travelerId || shipment.status !== 'assigned' ||
+          !shipment.acceptedQuoteAmount) {
+        return { success: false, error: 'Invalid cash payment request' };
       }
-      if (existing) {
-        return { success: false, error: 'Payment already initiated for this shipment', payment: existing };
+      if (db.getPaymentByShipmentId(input.shipmentId)) {
+        return { success: false, error: 'Payment already initiated' };
       }
+      const amount = shipment.acceptedQuoteAmount;
+      const platformFee = Math.round(amount * 0.2);
       const payment = db.createPayment({
-        shipmentId: input.shipmentId,
-        senderId: input.senderId,
-        travelerId: input.travelerId,
-        amount: input.amount,
-        platformFee: input.platformFee,
-        travelerAmount: input.travelerAmount,
-        method: input.method,
-        status: input.status ?? 'pending',
-        escrowHeld: input.escrowHeld ?? false,
+        shipmentId: shipment.id, senderId: shipment.senderId,
+        travelerId: shipment.assignedTravelerId, amount, platformFee,
+        travelerAmount: amount - platformFee, method: 'cod', status: 'pending', escrowHeld: false,
       });
+      db.updateShipment(shipment.id, { status: 'confirmed', paymentMethod: 'cod', paymentStatus: 'cod_pending', paymentCompleted: false });
       return { success: true, payment };
     }),
 
-  complete: publicProcedure
+  complete: protectedProcedure
     .input(z.object({ id: z.string(), transactionId: z.string().optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(() => ({ success: false as const, error: 'Client payment completion is disabled', payment: null })),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input, ctx }) => {
       const payment = db.getPaymentById(input.id);
-      if (!payment) return { success: false, error: 'Payment not found' };
-      if (payment.status === 'completed') return { success: false, error: 'Payment already completed' };
-
-      const updatedPayment = db.updatePayment(input.id, {
-        status: 'completed',
-        escrowHeld: false,
-        completedAt: new Date().toISOString(),
-      });
-
-      const shipment = db.getShipmentById(payment.shipmentId);
-      if (shipment) {
-        db.updateShipment(payment.shipmentId, {
-          status: 'confirmed',
-          paymentStatus: 'released',
-          paymentCompleted: true,
-        });
-      }
-      return { success: true, payment: updatedPayment };
+      return payment && (ctx.user.isAdmin || payment.senderId === ctx.user.id || payment.travelerId === ctx.user.id) ? payment : null;
     }),
 
-  getById: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => db.getPaymentById(input.id) || null),
-
-  getByShipmentId: publicProcedure
+  getByShipmentId: protectedProcedure
     .input(z.object({ shipmentId: z.string() }))
-    .query(async ({ input }) => db.getPaymentByShipmentId(input.shipmentId) || null),
+    .query(({ input, ctx }) => {
+      const payment = db.getPaymentByShipmentId(input.shipmentId);
+      return payment && (ctx.user.isAdmin || payment.senderId === ctx.user.id || payment.travelerId === ctx.user.id) ? payment : null;
+    }),
 
-  getAll: publicProcedure.query(async () => db.getAllPayments()),
+  getAll: adminProcedure.query(async () => db.getAllPayments()),
 });

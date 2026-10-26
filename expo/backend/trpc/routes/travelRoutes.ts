@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure } from '../create-context';
 import { db } from '../../db/store';
 
 export const travelRoutesRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(z.object({
       travelerId: z.string(),
       travelerName: z.string(),
@@ -17,31 +17,31 @@ export const travelRoutesRouter = createTRPCRouter({
       return { success: true, route };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
       return db.getRouteById(input.id) || null;
     }),
 
-  getByTravelerId: publicProcedure
+  getByTravelerId: protectedProcedure
     .input(z.object({ travelerId: z.string() }))
     .query(async ({ input }) => {
       return db.getRoutesByTravelerId(input.travelerId);
     }),
 
-  getAll: publicProcedure
+  getAll: protectedProcedure
     .query(async () => {
       return db.getAllRoutes();
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const success = db.deleteRoute(input.id);
       return { success };
     }),
 
-  getMatchingShipments: publicProcedure
+  getMatchingShipments: protectedProcedure
     .input(z.object({
       fromCity: z.string(),
       toCity: z.string(),

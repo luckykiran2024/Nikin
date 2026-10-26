@@ -59,8 +59,8 @@ class InMemoryStore {
   };
 
   // Users
-  createUser(userData: Omit<User, 'id' | 'createdAt'>): User {
-    const id = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  createUser(userData: Omit<User, 'id' | 'createdAt'> & { id?: string }): User {
+    const id = userData.id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const user: User = {
       ...userData,
       id,

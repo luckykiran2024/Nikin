@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure } from '../create-context';
 import { db } from '../../db/store';
 
 export const notificationsRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(z.object({
       userId: z.string(),
       title: z.string(),
@@ -17,13 +17,13 @@ export const notificationsRouter = createTRPCRouter({
       return { success: true, notification };
     }),
 
-  getByUserId: publicProcedure
+  getByUserId: protectedProcedure
     .input(z.object({ userId: z.string() }))
     .query(async ({ input }) => {
       return db.getNotificationsByUserId(input.userId);
     }),
 
-  markAsRead: publicProcedure
+  markAsRead: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const notification = db.markNotificationAsRead(input.id);
@@ -33,7 +33,7 @@ export const notificationsRouter = createTRPCRouter({
       return { success: true, notification };
     }),
 
-  markAllAsRead: publicProcedure
+  markAllAsRead: protectedProcedure
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ input }) => {
       const notifications = db.getNotificationsByUserId(input.userId);

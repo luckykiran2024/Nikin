@@ -33,35 +33,30 @@ const roleConfig: Record<string, {
   subtitle: string;
   icon: typeof Send;
   accent: string;
-  testCredentials: string;
 }> = {
   sender: {
     title: 'Sender',
     subtitle: 'Send or receive parcels',
     icon: Send,
     accent: Colors.primary,
-    testCredentials: 'sender@test.com / sender123',
   },
   receiver: {
     title: 'Sender',
     subtitle: 'Send or receive parcels',
     icon: Send,
     accent: Colors.primary,
-    testCredentials: 'sender@test.com / sender123',
   },
   traveler: {
     title: 'Traveler',
     subtitle: 'Deliver parcels & earn',
     icon: Plane,
     accent: Colors.accent,
-    testCredentials: 'traveler@test.com / traveler123',
   },
   admin: {
     title: 'Admin',
     subtitle: 'Platform management',
     icon: Shield,
     accent: Colors.secondary,
-    testCredentials: 'admin@parcelpeer.com / admin123',
   },
 };
 
@@ -283,10 +278,6 @@ export default function LoginScreen() {
             </TouchableOpacity>
           )}
 
-          <View style={styles.testBox}>
-            <Text style={styles.testLabel}>DEMO CREDENTIALS</Text>
-            <Text style={styles.testValue}>{config.testCredentials}</Text>
-          </View>
 
           <TouchableOpacity
             testID="view-designs"

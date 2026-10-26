@@ -211,9 +211,7 @@ export const [DataStoreProvider, useDataStore] = createContextHook(() => {
 
   const updateShipment = useCallback(async (shipmentId: string, updates: Partial<Shipment>) => {
     const result = await updateShipmentMutation.mutateAsync({ id: shipmentId, ...updates });
-    if (result.success) {
-      console.log('Updated shipment:', shipmentId);
-    }
+    if (!result.success) throw new Error(result.error || 'Could not update shipment');
   }, [updateShipmentMutation]);
 
   const updateShipmentLocation = useCallback(async (shipmentId: string, coords: GeoCoordinates) => {

@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure } from '../create-context';
 import { db } from '../../db/store';
 
 export const ticketsRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(z.object({
       userId: z.string(),
       userName: z.string(),
@@ -30,23 +30,23 @@ export const ticketsRouter = createTRPCRouter({
       return { success: true, ticket };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
       return db.getTicketById(input.id) || null;
     }),
 
-  getAll: publicProcedure
+  getAll: protectedProcedure
     .query(async () => {
       return db.getAllTickets();
     }),
 
-  getOpen: publicProcedure
+  getOpen: protectedProcedure
     .query(async () => {
       return db.getOpenTickets();
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(z.object({
       id: z.string(),
       status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),

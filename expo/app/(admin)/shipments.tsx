@@ -107,7 +107,7 @@ const mockShipments: AdminShipment[] = [
   },
 ];
 
-const statusConfig: Record<ShipmentStatus, { label: string; color: string; bg: string }> = {
+const statusConfig: Partial<Record<ShipmentStatus, { label: string; color: string; bg: string }>> = {
   created: { label: 'Created', color: Colors.statusCreated, bg: Colors.infoLight },
   quoted: { label: 'Quoted', color: Colors.statusQuoted, bg: '#EDE9FE' },
   assigned: { label: 'Assigned', color: Colors.statusAssigned, bg: Colors.warningLight },
@@ -178,7 +178,7 @@ export default function AdminShipmentsScreen() {
         }
       >
         {filteredShipments.map((shipment) => {
-          const status = statusConfig[shipment.status];
+          const status = statusConfig[shipment.status] ?? { label: shipment.status.replace(/_/g, ' '), color: '#475569', bg: '#E2E8F0' };
           return (
             <TouchableOpacity key={shipment.id} style={styles.shipmentCard}>
               <View style={styles.cardHeader}>
