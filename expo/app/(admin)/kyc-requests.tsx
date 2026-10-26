@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   FileCheck,
   CheckCircle,
@@ -44,25 +43,6 @@ export default function KYCRequestsScreen() {
     ? kycRequests.filter(r => r.status === 'pending')
     : kycRequests;
 
-  const updateUserKYCStatus = async (userId: string, status: 'approved' | 'rejected') => {
-    try {
-      const storedUsers = await AsyncStorage.getItem('registered_users');
-      if (storedUsers) {
-        const registeredUsers = JSON.parse(storedUsers);
-        const userEmail = Object.keys(registeredUsers).find(
-          email => registeredUsers[email].id === userId
-        );
-        if (userEmail) {
-          registeredUsers[userEmail].kycStatus = status;
-          await AsyncStorage.setItem('registered_users', JSON.stringify(registeredUsers));
-          console.log('Updated user KYC status:', userId, status);
-        }
-      }
-    } catch (error) {
-      console.log('Error updating user KYC status:', error);
-    }
-  };
-
   const handleApprove = (request: KYCRequest) => {
     Alert.alert(
       'Approve KYC',
@@ -74,7 +54,6 @@ export default function KYCRequestsScreen() {
           onPress: async () => {
             try {
               await approveKYCRequest(request.id);
-              await updateUserKYCStatus(request.userId, 'approved');
               Alert.alert('Success', `KYC approved for ${request.userName}. An email notification will be sent.`);
             } catch {
               Alert.alert('Error', 'Failed to approve KYC request');
@@ -97,7 +76,6 @@ export default function KYCRequestsScreen() {
           onPress: async () => {
             try {
               await cancelKYCRequest(request.id, true);
-              await updateUserKYCStatus(request.userId, 'rejected');
               Alert.alert('Cancelled', `KYC request for ${request.userName} has been cancelled.`);
             } catch (err: any) {
               console.log('[admin] cancel kyc error:', err);
@@ -121,7 +99,6 @@ export default function KYCRequestsScreen() {
           onPress: async () => {
             try {
               await rejectKYCRequest(request.id, 'Documents not clear or invalid');
-              await updateUserKYCStatus(request.userId, 'rejected');
               Alert.alert('Rejected', `KYC rejected for ${request.userName}. An email notification will be sent.`);
             } catch {
               Alert.alert('Error', 'Failed to reject KYC request');

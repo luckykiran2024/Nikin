@@ -52,7 +52,7 @@ export default function PaymentScreen() {
   const { amount, shipmentId } = useLocalSearchParams<{ amount: string; shipmentId: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const { createPayment, updateShipment, getShipmentById, getPaymentByShipmentId } = useDataStore();
+  const { createPayment, getShipmentById, getPaymentByShipmentId } = useDataStore();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -111,12 +111,6 @@ export default function PaymentScreen() {
           method: 'cod',
           status: 'pending',
           escrowHeld: false,
-        });
-        await updateShipment(shipmentId, {
-          status: 'confirmed',
-          paymentMethod: 'cod',
-          paymentStatus: 'cod_pending',
-          paymentCompleted: true,
         });
         setIsProcessing(false);
         Alert.alert('Order Confirmed', `Please pay ₹${totalAmount} in cash upon delivery.`, [

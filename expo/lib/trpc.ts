@@ -1,7 +1,7 @@
 import { httpLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import superjson from "superjson";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSupabaseClient } from "@/lib/supabase";
 
 import type { AppRouter } from "@/backend/trpc/app-router";
 
@@ -39,7 +39,8 @@ export const trpcClient = trpc.createClient({
       transformer: superjson,
       async headers() {
         try {
-          const token = await AsyncStorage.getItem("auth_token");
+          const { data } = await getSupabaseClient()?.auth.getSession() ?? { data: { session: null } };
+          const token = data.session?.access_token;
           return token ? { Authorization: `Bearer ${token}` } : {};
         } catch (error) {
           console.warn('[tRPC] Error getting auth token:', error);

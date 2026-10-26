@@ -74,7 +74,7 @@ export const initSupabaseAuth = async () => {
   }
 };
 
-export const signUpWithEmail = async (email: string, password: string) => {
+export const signUpWithEmail = async (email: string, password: string, metadata?: { name: string; phone: string; role: string }) => {
   if (!checkSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -85,6 +85,7 @@ export const signUpWithEmail = async (email: string, password: string) => {
   const { data, error } = await client.auth.signUp({
     email,
     password,
+    options: { data: metadata },
   });
   
   if (error) throw error;

@@ -14,12 +14,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Package, User, Phone, Mail, Lock, ArrowLeft, AlertCircle, ChevronDown, Check, CheckCircle } from 'lucide-react-native';
+import { Package, User, Phone, Mail, Lock, ArrowLeft, AlertCircle, ChevronDown, Check } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
 import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE, validatePhoneNumber, validateEmail } from '@/utils/validation';
-import OTPVerification from '@/components/OTPVerification';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -38,12 +37,6 @@ export default function SignupScreen() {
   const [error, setError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [otpVerificationType, setOtpVerificationType] = useState<'phone' | 'email'>('email');
-  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
-  
-
   const validateFields = (): boolean => {
     let isValid = true;
     setPhoneError('');
@@ -64,33 +57,6 @@ export default function SignupScreen() {
     return isValid;
   };
 
-  const initiateOtpVerification = (type: 'phone' | 'email') => {
-    if (type === 'phone') {
-      const phoneValidation = validatePhoneNumber(phone, countryCode);
-      if (!phoneValidation.valid) {
-        setPhoneError(phoneValidation.error || 'Invalid phone number');
-        return;
-      }
-    } else {
-      const emailValidation = validateEmail(email);
-      if (!emailValidation.valid) {
-        setEmailError(emailValidation.error || 'Invalid email');
-        return;
-      }
-    }
-    setOtpVerificationType(type);
-    setShowOtpModal(true);
-  };
-
-  const handleOtpVerified = () => {
-    setShowOtpModal(false);
-    if (otpVerificationType === 'phone') {
-      setIsPhoneVerified(true);
-    } else {
-      setIsEmailVerified(true);
-    }
-  };
-
   const handleSignup = async () => {
     if (!name.trim() || !phone.trim() || !email.trim() || !password.trim()) {
       setError('Please fill in all required fields');
@@ -98,11 +64,6 @@ export default function SignupScreen() {
     }
 
     if (!validateFields()) {
-      return;
-    }
-
-    if (!isEmailVerified && !isPhoneVerified) {
-      setError('Please verify your email or phone number');
       return;
     }
 
@@ -206,66 +167,36 @@ export default function SignupScreen() {
                   <Text style={styles.countryCodeText}>{countryCode}</Text>
                   <ChevronDown size={16} color={Colors.textSecondary} />
                 </TouchableOpacity>
-                <View style={[styles.phoneInputContainer, isPhoneVerified && styles.inputVerified]}>
-                  <Phone size={20} color={isPhoneVerified ? Colors.success : Colors.textSecondary} />
+                <View style={styles.phoneInputContainer}>
+                  <Phone size={20} color={Colors.textSecondary} />
                   <TextInput
                     style={styles.phoneInput}
                     placeholder="Phone Number"
                     placeholderTextColor={Colors.textTertiary}
                     value={phone}
-                    onChangeText={(text) => { setPhone(text); setIsPhoneVerified(false); }}
+                    onChangeText={setPhone}
                     keyboardType="phone-pad"
-                    editable={!isPhoneVerified}
-                  />
-                  {isPhoneVerified ? (
-                    <CheckCircle size={20} color={Colors.success} />
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.verifyButton}
-                      onPress={() => initiateOtpVerification('phone')}
-                      disabled={!phone.trim()}
-                    >
-                      <Text style={[styles.verifyButtonText, !phone.trim() && styles.verifyButtonTextDisabled]}>Verify</Text>
-                    </TouchableOpacity>
-                  )}
+                                      />
+
                 </View>
               </View>
               {phoneError ? <Text style={styles.fieldError}>{phoneError}</Text> : null}
 
-              <View style={[styles.inputContainer, isEmailVerified && styles.inputVerified]}>
-                <Mail size={20} color={isEmailVerified ? Colors.success : Colors.textSecondary} />
+              <View style={styles.inputContainer}>
+                <Mail size={20} color={Colors.textSecondary} />
                 <TextInput
                   style={styles.input}
                   placeholder="Email Address"
                   placeholderTextColor={Colors.textTertiary}
                   value={email}
-                  onChangeText={(text) => { setEmail(text); setIsEmailVerified(false); }}
+                  onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  editable={!isEmailVerified}
-                />
-                {isEmailVerified ? (
-                  <CheckCircle size={20} color={Colors.success} />
-                ) : (
-                  <TouchableOpacity
-                    style={styles.verifyButton}
-                    onPress={() => initiateOtpVerification('email')}
-                    disabled={!email.trim()}
-                  >
-                    <Text style={[styles.verifyButtonText, !email.trim() && styles.verifyButtonTextDisabled]}>Verify</Text>
-                  </TouchableOpacity>
-                )}
+                                  />
+
               </View>
               {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
 
-              {!isEmailVerified && !isPhoneVerified && (
-                <View style={styles.verificationNotice}>
-                  <AlertCircle size={16} color={Colors.warning} />
-                  <Text style={styles.verificationNoticeText}>
-                    Please verify your email or phone to continue
-                  </Text>
-                </View>
-              )}
 
               <View style={styles.inputContainer}>
                 <Lock size={20} color={Colors.textSecondary} />
@@ -366,13 +297,7 @@ export default function SignupScreen() {
           </View>
         </Modal>
 
-        <OTPVerification
-          visible={showOtpModal}
-          onClose={() => setShowOtpModal(false)}
-          onVerify={handleOtpVerified}
-          verificationType={otpVerificationType}
-          target={otpVerificationType === 'email' ? email : `${countryCode}${phone}`}
-        />
+
       </SafeAreaView>
     </LinearGradient>
   );

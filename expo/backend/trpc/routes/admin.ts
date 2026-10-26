@@ -1,35 +1,34 @@
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, adminProcedure } from '../create-context';
 import { db } from '../../db/store';
 
 export const adminRouter = createTRPCRouter({
-  getStats: publicProcedure
+  getStats: adminProcedure
     .query(async () => {
       return db.getAdminStats();
     }),
 
-  getAllUsers: publicProcedure
+  getAllUsers: adminProcedure
     .query(async () => {
       return db.getAllUsers();
     }),
 
-  getAllShipments: publicProcedure
+  getAllShipments: adminProcedure
     .query(async () => {
       return db.getAllShipments();
     }),
 
-  getAllPayments: publicProcedure
+  getAllPayments: adminProcedure
     .query(async () => {
       return db.getAllPayments();
     }),
 
-  getAllKYCRequests: publicProcedure
+  getAllKYCRequests: adminProcedure
     .query(async () => {
       return db.getAllKYCRequests();
     }),
 
-  clearAllData: publicProcedure
+  clearAllData: adminProcedure
     .mutation(async () => {
-      db.clearAll();
-      return { success: true, message: 'All data cleared' };
+      return { success: false, message: 'Data deletion is disabled until backups and audit controls are in place' };
     }),
 });

@@ -1,122 +1,102 @@
+import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure, adminProcedure } from '../create-context';
 import { db } from '../../db/store';
 
+const role = z.enum(['sender', 'traveler', 'receiver']);
+const ownUser = (actorId: string, targetId: string) => {
+  if (actorId !== targetId) throw new TRPCError({ code: 'FORBIDDEN' });
+};
+
 export const usersRouter = createTRPCRouter({
-  register: publicProcedure
+  register: protectedProcedure
     .input(z.object({
-      name: z.string().min(1),
-      phone: z.string().min(10),
+      name: z.string().trim().min(1),
+      phone: z.string().trim().min(10),
       email: z.string().email(),
-      roles: z.array(z.enum(['sender', 'traveler', 'receiver', 'admin'])),
-      activeRole: z.enum(['sender', 'traveler', 'receiver', 'admin']),
+      roles: z.array(role).min(1),
+      activeRole: role,
       gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional(),
     }))
-    .mutation(async ({ input }) => {
-      const existingByPhone = db.getUserByPhone(input.phone);
-      if (existingByPhone) {
-        return { success: false, error: 'Phone number already registered', user: existingByPhone };
+    .mutation(({ input, ctx }) => {
+      if (!ctx.user.email || input.email.toLowerCase() !== ctx.user.email.toLowerCase()) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Email must match the authenticated account' });
       }
-
-      const existingByEmail = db.getUserByEmail(input.email);
-      if (existingByEmail) {
-        return { success: false, error: 'Email already registered', user: existingByEmail };
+      if (!input.roles.includes(input.activeRole)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Active role must be assigned' });
       }
-
+      const existing = db.getUserById(ctx.user.id);
+      if (existing) return { success: true, user: existing };
+      if (db.getUserByPhone(input.phone) || db.getUserByEmail(input.email)) {
+        return { success: false, error: 'Phone or email already registered' };
+      }
       const user = db.createUser({
         ...input,
+        id: ctx.user.id,
         kycStatus: 'not_submitted',
-        rating: 5.0,
+        rating: 5,
         totalDeliveries: 0,
         totalShipments: 0,
         isOnline: true,
         lastSeen: new Date().toISOString(),
         earnings: 0,
       });
-
       return { success: true, user };
     }),
 
-  login: publicProcedure
-    .input(z.object({
-      phone: z.string().min(10),
-    }))
-    .query(async ({ input }) => {
-      const user = db.getUserByPhone(input.phone);
-      if (!user) {
-        return { success: false, error: 'User not found' };
-      }
-      
+  login: protectedProcedure
+    .input(z.object({ phone: z.string().min(10) }))
+    .query(({ input, ctx }) => {
+      const user = db.getUserById(ctx.user.id);
+      if (!user || user.phone !== input.phone) return { success: false, error: 'User not found' };
       db.updateUser(user.id, { isOnline: true, lastSeen: new Date().toISOString() });
       return { success: true, user };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const user = db.getUserById(input.id);
-      return user || null;
+    .query(({ input, ctx }) => {
+      if (!ctx.user.isAdmin) ownUser(ctx.user.id, input.id);
+      return db.getUserById(input.id) || null;
     }),
 
-  getByPhone: publicProcedure
+  getByPhone: protectedProcedure
     .input(z.object({ phone: z.string() }))
-    .query(async ({ input }) => {
+    .query(({ input, ctx }) => {
       const user = db.getUserByPhone(input.phone);
+      if (user && !ctx.user.isAdmin) ownUser(ctx.user.id, user.id);
       return user || null;
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(z.object({
       id: z.string(),
-      name: z.string().optional(),
-      email: z.string().email().optional(),
-      activeRole: z.enum(['sender', 'traveler', 'receiver', 'admin']).optional(),
-      roles: z.array(z.enum(['sender', 'traveler', 'receiver', 'admin'])).optional(),
-      kycStatus: z.enum(['pending', 'approved', 'rejected', 'not_submitted']).optional(),
-      avatarUrl: z.string().optional(),
+      name: z.string().trim().min(1).optional(),
+      avatarUrl: z.string().url().optional(),
       address: z.object({
-        street: z.string(),
-        city: z.string(),
-        state: z.string(),
-        pincode: z.string(),
-        landmark: z.string().optional(),
+        street: z.string(), city: z.string(), state: z.string(),
+        pincode: z.string(), landmark: z.string().optional(),
       }).optional(),
       vehicleDetails: z.object({
         type: z.enum(['car', 'bike', 'train', 'flight', 'bus']),
-        vehicleNumber: z.string().optional(),
-        model: z.string().optional(),
-        color: z.string().optional(),
+        vehicleNumber: z.string().optional(), model: z.string().optional(), color: z.string().optional(),
       }).optional(),
       isOnline: z.boolean().optional(),
-      earnings: z.number().optional(),
-      totalDeliveries: z.number().optional(),
-      totalShipments: z.number().optional(),
-      rating: z.number().optional(),
-      aadhaarVerified: z.boolean().optional(),
-      aadhaarNumber: z.string().optional(),
-      panVerified: z.boolean().optional(),
-      bankVerified: z.boolean().optional(),
-      bankAccountNumber: z.string().optional(),
-      bankIfsc: z.string().optional(),
-      bankAccountHolder: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(({ input, ctx }) => {
+      ownUser(ctx.user.id, input.id);
       const { id, ...updates } = input;
       const user = db.updateUser(id, updates);
-      if (!user) {
-        return { success: false, error: 'User not found' };
-      }
+      if (!user) return { success: false, error: 'User not found' };
       return { success: true, user };
     }),
 
-  getAll: publicProcedure
-    .query(async () => {
-      return db.getAllUsers();
-    }),
+  getAll: adminProcedure.query(() => db.getAllUsers()),
 
-  becomeTraveler: publicProcedure
+  becomeTraveler: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(({ input, ctx }) => {
+      ownUser(ctx.user.id, input.id);
       const user = db.getUserById(input.id);
       if (!user) return { success: false as const, error: 'User not found' };
       if (user.kycStatus !== 'approved') {
@@ -127,27 +107,22 @@ export const usersRouter = createTRPCRouter({
       return { success: true as const, user: updated };
     }),
 
-  getRiskFlags: publicProcedure
+  getRiskFlags: protectedProcedure
     .input(z.object({ userId: z.string() }))
-    .query(async ({ input }) => {
+    .query(({ input, ctx }) => {
+      if (!ctx.user.isAdmin) ownUser(ctx.user.id, input.userId);
       return db.computeRiskFlags(input.userId);
     }),
 
-  switchRole: publicProcedure
-    .input(z.object({
-      id: z.string(),
-      role: z.enum(['sender', 'traveler', 'receiver', 'admin']),
-    }))
-    .mutation(async ({ input }) => {
+  switchRole: protectedProcedure
+    .input(z.object({ id: z.string(), role }))
+    .mutation(({ input, ctx }) => {
+      ownUser(ctx.user.id, input.id);
       const user = db.getUserById(input.id);
-      if (!user) {
-        return { success: false, error: 'User not found' };
-      }
-      
+      if (!user) return { success: false, error: 'User not found' };
       if (!user.roles.includes(input.role)) {
         return { success: false, error: 'User does not have this role' };
       }
-
       const updated = db.updateUser(input.id, { activeRole: input.role });
       return { success: true, user: updated };
     }),

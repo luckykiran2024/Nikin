@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure } from '../create-context';
 import { db } from '../../db/store';
 
 export const chatRouter = createTRPCRouter({
-  createConversation: publicProcedure
+  createConversation: protectedProcedure
     .input(z.object({
       type: z.enum(['sender_traveler', 'user_admin']),
       participants: z.array(z.string()),
@@ -21,24 +21,24 @@ export const chatRouter = createTRPCRouter({
       return { success: true, conversation, isExisting: false };
     }),
 
-  getConversation: publicProcedure
+  getConversation: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
       return db.getConversationById(input.id) || null;
     }),
 
-  getConversationByShipmentId: publicProcedure
+  getConversationByShipmentId: protectedProcedure
     .input(z.object({ shipmentId: z.string() }))
     .query(async ({ input }) => {
       return db.getConversationByShipmentId(input.shipmentId) || null;
     }),
 
-  getAllConversations: publicProcedure
+  getAllConversations: protectedProcedure
     .query(async () => {
       return db.getAllConversations();
     }),
 
-  sendMessage: publicProcedure
+  sendMessage: protectedProcedure
     .input(z.object({
       conversationId: z.string(),
       senderId: z.string(),
@@ -71,13 +71,13 @@ export const chatRouter = createTRPCRouter({
       return { success: true, message };
     }),
 
-  getMessages: publicProcedure
+  getMessages: protectedProcedure
     .input(z.object({ conversationId: z.string() }))
     .query(async ({ input }) => {
       return db.getMessagesByConversationId(input.conversationId);
     }),
 
-  markAsRead: publicProcedure
+  markAsRead: protectedProcedure
     .input(z.object({
       conversationId: z.string(),
       userId: z.string(),

@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { createTRPCRouter, publicProcedure } from '../create-context';
+import { createTRPCRouter, protectedProcedure } from '../create-context';
 import { db } from '../../db/store';
 import { TRUST_LIMITS } from '@/constants/trustLimits';
 
 export const quotesRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(z.object({
       shipmentId: z.string(),
       travelerId: z.string(),
@@ -15,7 +15,8 @@ export const quotesRouter = createTRPCRouter({
       estimatedDelivery: z.string(),
       message: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (input.travelerId !== ctx.user.id) return { success: false, error: 'Traveler does not match authenticated user' };
       const shipment = db.getShipmentById(input.shipmentId);
       if (!shipment) {
         return { success: false, error: 'Shipment not found' };
@@ -40,40 +41,40 @@ export const quotesRouter = createTRPCRouter({
       return { success: true, quote };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
       return db.getQuoteById(input.id) || null;
     }),
 
-  getByShipmentId: publicProcedure
+  getByShipmentId: protectedProcedure
     .input(z.object({ shipmentId: z.string() }))
     .query(async ({ input }) => {
       return db.getQuotesForShipment(input.shipmentId);
     }),
 
-  getByTravelerId: publicProcedure
+  getByTravelerId: protectedProcedure
     .input(z.object({ travelerId: z.string() }))
     .query(async ({ input }) => {
       return db.getQuotesByTravelerId(input.travelerId);
     }),
 
-  getAll: publicProcedure
+  getAll: protectedProcedure
     .query(async () => {
       return db.getAllQuotes();
     }),
 
-  accept: publicProcedure
+  accept: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const quote = db.getQuoteById(input.id);
       if (!quote) {
         return { success: false, error: 'Quote not found' };
       }
 
       const shipment = db.getShipmentById(quote.shipmentId);
-      if (!shipment) {
-        return { success: false, error: 'Shipment not found' };
+      if (!shipment || shipment.senderId !== ctx.user.id) {
+        return { success: false, error: 'Shipment not found or access denied' };
       }
 
       if (shipment.status !== 'created' && shipment.status !== 'quoted') {
@@ -126,7 +127,7 @@ export const quotesRouter = createTRPCRouter({
       return { success: true, quote: db.getQuoteById(input.id), conversationId: conversation.id, jobAcceptDeadline };
     }),
 
-  getBestMatches: publicProcedure
+  getBestMatches: protectedProcedure
     .input(z.object({ shipmentId: z.string(), limit: z.number().default(3) }))
     .query(async ({ input }) => {
       const shipment = db.getShipmentById(input.shipmentId);
@@ -165,7 +166,7 @@ export const quotesRouter = createTRPCRouter({
       return scored.sort((a, b) => b.score - a.score).slice(0, input.limit);
     }),
 
-  reject: publicProcedure
+  reject: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       const quote = db.getQuoteById(input.id);

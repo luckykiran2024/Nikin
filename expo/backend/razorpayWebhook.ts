@@ -89,7 +89,7 @@ webhookRouter.post('/razorpay', async (c) => {
       if (payment.status !== 'completed') {
         db.updatePayment(payment.id, {
           status: 'completed',
-          escrowHeld: false,
+          escrowHeld: true,
           completedAt: new Date().toISOString(),
           razorpayPaymentId,
         });
@@ -97,7 +97,7 @@ webhookRouter.post('/razorpay', async (c) => {
         if (shipment && shipment.status !== 'confirmed') {
           db.updateShipment(payment.shipmentId, {
             status: 'confirmed',
-            paymentStatus: 'released',
+            paymentStatus: 'held',
             paymentCompleted: true,
           });
         }
